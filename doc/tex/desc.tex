@@ -1,0 +1,261 @@
+\documentclass[12pt,a4paper,fleqn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amssymb, amsmath, multicol}
+\usepackage[russian]{babel}
+\usepackage{graphicx}
+\usepackage[shortcuts,cyremdash]{extdash}
+%\usepackage{wrapfig}
+%\usepackage{floatflt}
+%\usepackage{lipsum}
+
+\oddsidemargin=-15.4mm
+\textwidth=190mm
+\headheight=-32.4mm
+\textheight=277mm
+\tolerance=100
+\parindent=0pt
+\parskip=8pt
+\pagestyle{empty}
+\renewcommand{\tg}{\mathop{\mathrm{tg}}\nolimits}
+\renewcommand{\ctg}{\mathop{\mathrm{ctg}}\nolimits}
+\renewcommand{\arctan}{\mathop{\mathrm{arctg}}\nolimits}
+\newcommand{\divisible}{\mathop{\raisebox{-2pt}{\vdots}}}
+\RequirePackage{caption2}
+\renewcommand\captionlabeldelim{}
+\newcommand*{\hm}[1]{#1\nobreak\discretionary{}%
+{\hbox{$\mathsurround=0pt #1$}}{}}
+\title{Задача про мембрану. МКЭ.}
+\author{Аксенов Виталий}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\newcommand{\MM}{\mathbf{M}}
+\newcommand{\KM}{\mathbf{K}}
+\newcommand{\fM}{\mathbf{f}}
+\newcommand{\aM}{\mathbf{a}}
+\newcommand{\NM}{\mathbf{N}}
+\newcommand{\BM}{\mathbf{B}}
+\newcommand{\DM}{\mathbf{D}}
+
+
+\numberwithin{equation}{subsection}
+
+%\begin{abstract}
+%	On the evaluation of FOOBAR principle.
+%\end{abstract}
+\section*{Схема расчета}
+	\begin{enumerate}
+		\item Генерация сетки.
+			\begin{itemize}
+				\item Параметры узла~---~начальные координаты $(x_0, y_0)$, начальные смещения $\mathbf{a} = (u, v, w)$,
+							начальные скорости $\mathbf{v} = (v_u, v_v, v_w)$
+				\item Параметры элемента~---~индексы узлов $(i, j, k)$ в порядке обхода против часовой, 
+					упругие параметры $(E_e, \nu_e)$, $\rho_e$~---~плотность, $h_e$~---~толщина, внешняя (обьёмная) сила $\mathbf{b_e}(\tau)$
+				\item Ещё в элементе нужно сделать место под $S_e$ (площадь, считается из координат вершин), 
+						тензор напряжений $\mathbf{\sigma}_{ij}$(6 чисел)
+			\end{itemize}
+		\item Сборка глобальных матриц $\mathbf{K, M}$. Матрицу $\fM$ придется пересобирать каждый раз, т.к. 
+			силы $\mathbf{b}_e$ зависят от времени.
+			\begin{itemize}
+				\item Для каждого элемента нужно получить матрицы $\KM_e, \MM_e, \fM_e$. Возможно, нужно будет перейти в систему барицентра чтобы пользоваться
+					формулами интегрирования из Зинкевича. Вопрос: как такое преобразование координат влияет на матрицы? Кажется, что никак, т.к. это просто сдвиг, 
+					но нужно уточнить.
+				\item Возможно, стоит оценить для каждого элемента $\tau_{opt} = \frac12 \frac{diam_e}{c}, c \propto \sqrt{\frac{E_e}{\rho_e}}$~---~скорость звука.
+				\item Сборка глобальных матриц.
+			\end{itemize}
+		\item Шаги по времени. Численное решение уравнения $\mathbf{M\ddot{u} + Ku + f} = \mathbf{0}$
+			\begin{itemize}
+				\item Пересчет $\fM$
+				\item Вычисление тензора напряжений $\mathbf{\sigma}_{ij}$ (для дампов и последующего анализа на разрушение и т.п.) 
+				\item Дамп в \texttt{.vtk}
+				\item Итерация по времени. (см. метод Ньюмарка (???))
+			\end{itemize}
+	\end{enumerate}
+\section{Функции формы элемента. Получение матриц $\KM_e, \MM_e, \fM_e$}
+		Элемент~---~<<толстый>> треугольник. Есть три узла $(1, 2, 3)$ в порядке обхода против часовой стрелки. Известно, какие индексы у узлов в глобальном списке:
+			$(1,2,3) \leftrightarrow (p, q, r)$ Это мы используем в сборке. В формулах ниже $(i, j, k)$~---~циклическая перестановка $(1,2,3)$
+	\subsection{Функции формы}
+		Аппроксимируем смещения (displacement) в элементе:
+		\begin{equation}
+			\mathbf{u}(x,y,z) = \sum_{i = 1}^3{\mathbf{N_ia_i}} = \mathbf{Na}
+		\end{equation}
+		где $\NM = \left[ \begin{smallmatrix} \NM_1 & \NM_2 & \NM_3 \end{smallmatrix} \right]$, 
+			$\aM = \left[ \begin{smallmatrix} \aM_1 \\ \aM_2 \\ \aM_3 \end{smallmatrix} \right]$~---~узловые смещения.
+
+
+		Гипотеза Кирхгофа-Лява (кинематика \underline{тонких} пластин)~---~волокно, нормальное к срединной поверхности, остается нормальным к ней при деформации. 
+			Отсюда можем получить зависимость смещения от $z$:
+		\begin{equation}
+			\mathbf{u}(x,y,z) = \mathbf{u}_{midsurface}(x, y) + \underline{(\mathbf{n_{curr}} - \mathbf{n_{init}})}z
+		\end{equation}
+		где $z \in [-\frac{h_e}2, \frac{h_e}2]$. Предполагая, $\Delta\mathbf{a}$ между узлами элемента малы, можно подчёркнутое 
+			приближённо переписать в виде линейного оператора от $\mathbf{a}$.
+		\begin{equation}
+			\NM_i = (\alpha_i + \beta_i x + \gamma_i y)\mathbf{E} + z\mathbf{V}_i 
+		\end{equation}
+		\begin{equation}
+			\mathbf{V}_i = \frac{1}{S_e}[r_k - r_j]_{\times} =
+				\begin{bmatrix}
+					0 	&	0	&	-\beta_i \\
+					0 	&	0	&	-\gamma_i \\
+					\beta_i	&	\gamma_i&	0
+				\end{bmatrix}
+		\end{equation}
+		\begin{equation}
+			\mathbf{N}_i = 
+				\begin{bmatrix}
+					\alpha_i + \beta_i x + \gamma_i y 	&	0					&	-\beta_i \\
+					0 					&	\alpha_i + \beta_i x + \gamma_i y 	&	-\gamma_i \\
+					\beta_i					&	\gamma_i				&	\alpha_i + \beta_i x + \gamma_i y 
+				\end{bmatrix}
+		\end{equation}
+		Здесь 
+		\begin{gather}
+			\alpha_i = \frac1{S_e}\begin{vmatrix} 	x_j & y_j \\
+								x_k & y_k  \end{vmatrix}
+					\quad
+			\beta_i = -\frac1{S_e} (y_k - y_j)
+					\quad
+			\gamma_i = \frac1{S_e} (x_k - x_j) \\
+			S_e = \begin{vmatrix}
+					1	& x_i	& y_i \\
+					1	& x_j	& y_j \\
+					1	& x_k	& y_k
+				\end{vmatrix}\text{~---~удвоенная площадь треугольника}\notag
+		\end{gather}
+	\subsection{Растяжения (strains)}
+		Формулируем трёхмерную теорию упругости. 
+		\begin{equation}
+			\mathbf{\varepsilon} = \mathbf{Su} = \mathbf{SNa} = \mathbf{Ba}
+		\end{equation}	
+		\begin{gather}
+			\mathbf{S} = \begin{bmatrix}
+					\mathbf{S}_1 \\
+					\mathbf{S}_2
+					\end{bmatrix} \notag \\
+			\mathbf{S}_1 = \begin{bmatrix}
+				\frac{\partial}{\partial x}	&	0				&	0	\\	
+							0	&	\frac{\partial}{\partial y}	&	0	\\	
+							0	&	0				&	\frac{\partial}{\partial z}
+					\end{bmatrix} , \quad 
+			\mathbf{S}_2 = \begin{bmatrix}
+				\frac{\partial}{\partial y}	&	\frac{\partial}{\partial x}	&	0	\\	
+							0	&	\frac{\partial}{\partial z}	&	\frac{\partial}{\partial y}	\\	
+				\frac{\partial}{\partial z}	&	0				&	\frac{\partial}{\partial x}
+					\end{bmatrix} 
+		\end{gather}	
+		Двойки, которые обычно есть в выражениях типа $\mathbf{S}_2$, видимо, учтены будут в матрице упругих констант $\mathbf{D}$
+		\begin{equation}
+			\mathbf{B} = \begin{bmatrix}
+					\mathbf{B}_1^1 & \mathbf{B}_2^1 & \mathbf{B}_3^1 \\
+					\mathbf{B}_1^2 & \mathbf{B}_2^2 & \mathbf{B}_3^2 
+					\end{bmatrix}
+		\end{equation}
+		\begin{equation}
+			\mathbf{B}_i^1 = 
+				\begin{bmatrix}
+					\beta_i 	& 0 		& 0 \\
+					0 		& \gamma_i  	& 0 \\
+					\beta_i		& \gamma_i	& 0
+				\end{bmatrix}, \quad
+			\mathbf{B}_i^2 = 
+				\begin{bmatrix}
+					\gamma_i 	& \beta_i 	& 0 \\
+					0 		& 0 		& 0 \\
+					0		& 0		& 0
+				\end{bmatrix}
+		\end{equation}
+	\subsection{Напряжения (stresses)}
+		\begin{equation}
+			\mathbf{\sigma} = \begin{bmatrix} \sigma_{xx} \\ \sigma_{yy} \\ \sigma_{zz} \\ \tau_{xy} \\ \tau_{yz} \\ \tau{xz}  \end{bmatrix} 
+				= \mathbf{D \varepsilon} = \mathbf{DBa}
+		\end{equation}
+		\begin{gather}
+			\mathbf{D} = 
+				\begin{bmatrix}
+					\mathbf{D}_1 	& \mathbf{0}	\\
+					\mathbf{0}	& \mathbf{D}_2
+				\end{bmatrix} \\ \notag
+			\mathbf{D}_1 = \frac{E}{(1 + \nu)(1 - 2\nu)}
+				\begin{bmatrix}
+					1 - \nu 	& \nu 		& \nu \\
+					\nu 		& 1 - \nu  	& \nu \\
+					\nu		& \nu		& 1 - \nu
+				\end{bmatrix}, \quad
+			\mathbf{D}_2 = \frac{E}{(1 + \nu)(1 - 2\nu)}
+				\begin{bmatrix}
+					\frac{1-2\nu}2 	& 0 		& 0 \\
+					0 		& \frac{1-2\nu}2& 0 \\
+					0		& 0		& \frac{1-2\nu}2
+				\end{bmatrix}
+		\end{gather}
+		Здесь $(E, \nu)$~---~модуль Юнга и коэффициент Пуассона для элемента.
+	\subsection{Матрица жёсткости $\KM_e$}
+		\begin{equation}
+			\KM_e = \int_{V_e}{\mathbf{B^TDB}}dV_e = \frac12 S_e h_e 	\mathbf{B^TDB} 
+				= \begin{bmatrix}
+					\mathbf{K}_{ij}
+					\end{bmatrix}_{i, j \in \overline{1,3}}
+		\end{equation}
+		Имеется в виду блочная матрица из $3\times3$ блоков, каждый из которых~---~матрица $3\times3$:
+		\begin{equation}
+			\mathbf{K}_{ij} = \BM_i^1\DM_1\BM_j^1 +
+						\BM_i^2\DM_2\BM_j^2 
+		\end{equation}
+	\subsection{Матрица сил $\fM_e$}
+		\begin{equation}
+			\fM_e = - \int_{V_e} \mathbf{N^Tb}dV_e 
+					= - \iiint_{V_e} \begin{bmatrix}
+								\mathbf{N_1^T}\mathbf{b} \\
+								\mathbf{N_2^T}\mathbf{b} \\
+								\mathbf{N_3^T}\mathbf{b}
+							\end{bmatrix} dV_e
+		\end{equation}
+		\begin{equation}
+			\int_{V_e}\mathbf{N_i^T}dV_e = 
+				h_e\iint(\alpha_i + \beta_i x + \gamma_i y)\mathbf{E}dx dy +
+				\frac12 S_e \int_{-\frac12 h_e}^{\frac12 h_e}\mathbf{V_i^T}z dz
+		\end{equation}
+		Интегралы $\iint x dxdy, \iint y dxdy$ равны нулю в системе барицентра (см. Зинкевич, в конце, Appendix~D). 
+			Но переход из глобальной системы в систему барицентра~---~сдвиг $\Rightarrow$ якобиан единичный $\Rightarrow$ в глобальной системе то же самое.
+			В системе барицентра получается 
+		\begin{equation}
+			\mathbf{f} = \frac{\frac12 S_e h_e}{3}
+					\begin{bmatrix} \mathbf{b} \\ \mathbf{b} \\ \mathbf{b}  \end{bmatrix}
+		\end{equation}
+		По идее, это не  должно зависеть от системы (так же получалось и в $1D$ методе), но нужно проверить.
+	\subsection{Матрица масс $\MM_e$}
+		$\MM_e$ снова запишем как блочную матрицу $\left[  \MM_{ij}  \right]_{i,j \in \overline{1,3}}$
+		\begin{equation}
+			\MM_e = \rho_e\int_{V_e}{\mathbf{N^TN}}dV
+		\end{equation}
+		\begin{equation}
+			\MM_{ij} = \rho\int_{V_e}\mathbf{N_i^TN_j}dV 
+		\end{equation}
+		После интегрирования получаем:
+		\begin{multline}
+			\MM_{ij} = \frac{\rho_e h_e S_e}{24} \left[ 12\alpha_i \alpha_j 
+								+ \beta_i \beta_j(x_i^2 + x_j^2 + x_k^2))
+								+ \gamma_i \gamma_j(y_i^2 + y_j^2 + y_k^2)
+								+(\beta_i\gamma_j + \beta_j\gamma_i)(x_iy_i + x_jy_j + x_ky_k)\right] \mathbf{E} + \\
+								+ \underline{\frac{\rho_e S_e h_e^3}{12} \mathbf{V_i^TV_j}}
+		\end{multline}
+		Интересно будет попробовать на подчёркнутое забить, т.к. там $h_e^3$, а мембрана тонкая.
+		Здесь все $x_i, y_i$ в системе барицентра (для нее выписаны все формулы интегрирования). Т.е. нужно сделать сдвиг
+		$$
+			x_i = x^0_i - \frac13(x^0_1 + x^0_2 + x^0_3), \quad  y_i = y^0_i - \frac13(y^0_1 + y^0_2 + y^0_3)
+		$$
+		
+%\begin{figure}[bh] 
+%	\noindent\centering{ 
+%	\includegraphics[width=120mm]{../img/sample.png} } 
+%	\caption{Sample image} 
+%	\label{smpl} 
+%\end{figure}
+\begin{thebibliography}{9}
+\bibitem{MPython} Python, M.: <<On general theory of SPAM>>, ELSEVEIR, 1488, ISBN 42424242
+\end{thebibliography}
+\end{document}
