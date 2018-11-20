@@ -1,4 +1,5 @@
 import code.membrane as mb
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
@@ -11,8 +12,11 @@ g.add_elem(e)
 e = mb.Element((1, 3, 2), 1e6, 0.3, 0.01, 4000)
 g.add_elem(e)
 g.set_S()
-for el in g.elements :
-    print(el.S)
+g.set_BDmatrix()
+with open('../dmp/matr.txt', 'w') as output:
+    for el in g.elements :
+        output.write(np.array2string(el.DB, precision=1))
+        output.write('\n')
 
 fig, axs = plt.subplots()
 polys = g.get_matplotlib_polygons()
@@ -21,4 +25,4 @@ for p in polys:
     axs.add_patch(p)
 axs.set_xlim((-6, 6))
 axs.set_ylim((-6, 6))
-fig.savefig('../patch.png', fmt='png')
+fig.savefig('../dmp/patch.png', fmt='png')

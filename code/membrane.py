@@ -18,6 +18,16 @@ class Element:
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
         self.S = 0.0                                        # doubled element area; tbc
 
+    def get_Dmatrices(self) -> (np.ndarray, np.ndarray):    # see eq. 1.3.2 from desc.
+        """Returns elastic moduli matrix for an element"""
+        D_2 = np.identity(3)*(1 - 2.0*self.nu)
+        D_1 = np.full([3,3], self.nu) + D_2
+        D_2 /= 2.0
+        D = self.E/(1 + self.nu)/(1 - 2.0*self.nu)
+        D_1 *= D
+        D_2 *= D
+        return D_1, D_2
+
     def to_string(self):
         return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
 
@@ -56,6 +66,27 @@ class Grid:
                                 [ 1.0, self.x_0[j] , self.y_0[j]],
                                 [ 1.0, self.x_0[k] , self.y_0[k]] ])
             elem.S = np.linalg.det(delta)
+
+    def set_BDmatrix(self):
+        for elem in self.elements:
+            D_1, D_2 = elem.get_Dmatrices()
+            for i in range(3):
+                j = (i + 1) % 3
+                k = (i + 2) % 3
+                I, J, K = elem.node_ind[i], elem.node_ind[j], elem.node_ind[k]  # indices in external massive
+                # TODO: omg this is so ugly and non-Python, need to find better solution
+                beta = -(self.y_0[K] - self.y_0[J])/elem.S
+                gamma = (self.x_0[K] - self.x_0[J])/elem.S
+                B_1 = np.array([[beta, 0, 0],                                   # see eq 1.2.4
+                                [0, gamma, 0],
+                                [beta, gamma, 0]])
+                B_2 = np.array([[gamma, beta, 0],
+                                [0, 0, 0],
+                                [0, 0, 0]])
+                DB_1 = D_1@B_1
+                DB_2 = D_2@B_2
+                elem.DB[0:3, 3*i:3*(i+1)] = DB_1
+                elem.DB[3:6, 3*i:3*(i+1)] = DB_2
 
 
 
