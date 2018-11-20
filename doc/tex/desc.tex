@@ -55,7 +55,7 @@
 				\item Параметры элемента~---~индексы узлов $(i, j, k)$ в порядке обхода против часовой, 
 					упругие параметры $(E_e, \nu_e)$, $\rho_e$~---~плотность, $h_e$~---~толщина, внешняя (обьёмная) сила $\mathbf{b_e}(\tau)$
 				\item Ещё в элементе нужно сделать место под $S_e$ (площадь, считается из координат вершин), 
-						тензор напряжений $\mathbf{\sigma}_{ij}$(6 чисел)
+						матрицу $\mathbf{DB}$ из (\ref{stress}), чтобы считать $\mathbf{\sigma}_{ij}$
 			\end{itemize}
 		\item Сборка глобальных матриц $\mathbf{K, M}$. Матрицу $\fM$ придется пересобирать каждый раз, т.к. 
 			силы $\mathbf{b}_e$ зависят от времени.
@@ -169,7 +169,7 @@
 				\end{bmatrix}
 		\end{equation}
 	\subsection{Напряжения (stresses)}
-		\begin{equation}
+		\begin{equation}\label{stress}
 			\mathbf{\sigma} = \begin{bmatrix} \sigma_{xx} \\ \sigma_{yy} \\ \sigma_{zz} \\ \tau_{xy} \\ \tau_{yz} \\ \tau{xz}  \end{bmatrix} 
 				= \mathbf{D \varepsilon} = \mathbf{DBa}
 		\end{equation}
