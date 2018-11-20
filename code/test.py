@@ -1,6 +1,24 @@
 import code.membrane as mb
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 
-g = mb.Grid(3)
+
+g = mb.Grid(4)
+g.x_0[0:4] = [0.0, 3.0, 0.0, 3.0]
+g.y_0[0:4] = [0.0, 0.0, 4.0, 4.0]
 e = mb.Element((0, 1, 2), 1e6, 0.3, 0.01, 4000)
 g.add_elem(e)
-print(g.elements[0].to_string())
+e = mb.Element((1, 3, 2), 1e6, 0.3, 0.01, 4000)
+g.add_elem(e)
+g.set_S()
+for el in g.elements :
+    print(el.S)
+
+fig, axs = plt.subplots()
+polys = g.get_matplotlib_polygons()
+for p in polys:
+    print(p)
+    axs.add_patch(p)
+axs.set_xlim((-6, 6))
+axs.set_ylim((-6, 6))
+fig.savefig('../patch.png', fmt='png')

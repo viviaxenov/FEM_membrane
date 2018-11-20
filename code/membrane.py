@@ -1,5 +1,6 @@
 import numpy as np
-
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 # tbc = to be counted
 
 
@@ -15,7 +16,7 @@ class Element:
         self.rho = rho                                      # density
 
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
-        self.S = 0.0                                        # element area; tbc
+        self.S = 0.0                                        # doubled element area; tbc
 
     def to_string(self):
         return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
@@ -38,4 +39,24 @@ class Grid:
         if elem.E < 0.0 or elem.nu < 0 or elem.nu > 0.5 or elem.rho <= 0 or elem.h <= 0:
             raise ValueError("Wrong element params:\n" + elem.to_string())
         self.elements.append(elem)
+
+    def get_matplotlib_polygons(self) -> [Polygon]:
+        polys = []
+        for elem in self.elements:
+            vertices = []
+            for i in elem.node_ind:
+                vertices.append([self.x_0[i], self.y_0[i]])
+            polys.append(Polygon(vertices, closed=True, fill=False, edgecolor='b'))
+        return polys
+
+    def set_S(self):
+        for elem in self.elements:
+            i, j, k = elem.node_ind
+            delta = np.array([  [ 1.0, self.x_0[i] , self.y_0[i]],
+                                [ 1.0, self.x_0[j] , self.y_0[j]],
+                                [ 1.0, self.x_0[k] , self.y_0[k]] ])
+            elem.S = np.linalg.det(delta)
+
+
+
 
