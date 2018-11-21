@@ -19,6 +19,7 @@ class Element:
 
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
         self.S = 0.0                                        # doubled element area; tbc
+        self.sigma = np.zeros([6])                          # stress tensor
 
     def get_Dmatrices(self) -> (np.ndarray, np.ndarray):    # see eq. 1.3.2 from desc.
         """Returns elastic moduli matrix for an element"""
@@ -68,11 +69,22 @@ class Grid:
         point_coords[:, 1] += self.y_0
         point_velocities = self.v_a.reshape([self.n_nodes, 3])
         pd: PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
+
         triangles = []
+        sigmas = []
+
         for elem in self.elements:
             triangles.append(list(elem.node_ind))
+            sigmas.append(elem.sigma)
+        cd = []
+        names = ['sigma_xx', 'sigma_yy', 'sigma_zz', 'tau_xy', 'tau_yz', 'tau_xz']
+        sigmas = np.array(sigmas)
+        for i in range(6):
+            cd.append(pvtk.Scalars(sigmas[:, i], name=names[i]))
         usg = pvtk.UnstructuredGrid(point_coords, triangle=triangles)
         vtk = pvtk.VtkData(usg, pd)
+        for e in cd:
+            vtk.cell_data.append(e)
         vtk.tofile(path, 'binary')
 
     def set_S(self):
@@ -82,6 +94,7 @@ class Grid:
                                 [ 1.0, self.x_0[j] , self.y_0[j]],
                                 [ 1.0, self.x_0[k] , self.y_0[k]] ])
             elem.S = np.linalg.det(delta)
+
 
     def set_BDmatrix(self):
         for elem in self.elements:
@@ -104,6 +117,14 @@ class Grid:
                 elem.DB[0:3, 3*i:3*(i+1)] = DB_1
                 elem.DB[3:6, 3*i:3*(i+1)] = DB_2
 
+
+    def set_sigma(self):
+        for elem in self.elements:
+            I, J, K = elem.node_ind
+            a_e = np.concatenate([self.a[3*I:3*(I+1)],
+                                   self.a[3*J:3*(J+1)],
+                                   self.a[3*K:3*(K+1)]])                        # getting displacement vector from global array
+            elem.sigma = elem.DB@a_e
 
 
 

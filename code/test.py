@@ -15,6 +15,7 @@ g.set_S()
 g.set_BDmatrix()
 g.a[3:6] = [0.0, 1.0, 1.0]
 g.v_a[3:6] = [1.0, 1.0, 1.0]
+g.set_sigma()
 with open('../dmp/matr.txt', 'w') as output:
     for el in g.elements :
         output.write(np.array2string(el.DB, precision=1))
