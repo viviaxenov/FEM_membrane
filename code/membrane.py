@@ -1,9 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import pyvtk as pvtk
-# tbc = to be counted
-from pyvtk import PointData
+# tbc = to be counted/coded/computed/
 
 
 class Element:
@@ -68,7 +66,7 @@ class Grid:
         point_coords[:, 0] += self.x_0
         point_coords[:, 1] += self.y_0
         point_velocities = self.v_a.reshape([self.n_nodes, 3])
-        pd: PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
+        pd: pvtk.PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
 
         triangles = []
         sigmas = []
@@ -96,7 +94,7 @@ class Grid:
             elem.S = np.linalg.det(delta)
 
 
-    def set_BDmatrix(self):
+    def set_DBmatrix(self):
         for elem in self.elements:
             D_1, D_2 = elem.get_Dmatrices()
             for i in range(3):
@@ -117,14 +115,44 @@ class Grid:
                 elem.DB[0:3, 3*i:3*(i+1)] = DB_1
                 elem.DB[3:6, 3*i:3*(i+1)] = DB_2
 
+    def assemble_K(self):                                                        # K = 0.5Sh*B.T @(DB) see eq 1.4.1
+        for elem in self.elements:
+            B = np.zeros([6, 9])
+            for i in range(3):
+                j = (i + 1) % 3
+                k = (i + 2) % 3
+                I, J, K = elem.node_ind[i], elem.node_ind[j], elem.node_ind[k]  # indices in external massive
+                # TODO: omg this is so ugly and non-Python, need to find better solution
+                beta = -(self.y_0[K] - self.y_0[J])/elem.S
+                gamma = (self.x_0[K] - self.x_0[J])/elem.S
+                B_1 = np.array([[beta, 0, 0],                                       # see eq 1.2.4
+                                [0, gamma, 0],
+                                [beta, gamma, 0]])
+                B_2 = np.array([[gamma, beta, 0],
+                                [0, 0, 0],
+                                [0, 0, 0]])                                         # assuming DB was already counted
+                B[:, 3*i:3*(i+1)] = np.row_stack((B_1, B_2))
+            K_e = B.T @ elem.DB
+            K_e *= 0.5*elem.S*elem.h                                                # local stiffness obtained
+                                                                                    # projecting to global matrix
+            for i in range(3):
+                for j in range(3):
+                    I , J = elem.node_ind[i], elem.node_ind[j]
+                    self.K[3*I:3*(I+1), 3*J:3*(J+1)] += K_e[3*i:3*(i+1), 3*j:3*(j+1)]
+
 
     def set_sigma(self):
         for elem in self.elements:
             I, J, K = elem.node_ind
             a_e = np.concatenate([self.a[3*I:3*(I+1)],
                                    self.a[3*J:3*(J+1)],
-                                   self.a[3*K:3*(K+1)]])                        # getting displacement vector from global array
-            elem.sigma = elem.DB@a_e
+                                   self.a[3*K:3*(K+1)]])                            # getting displacement vector from global array
+            elem.sigma = elem.DB @ a_e
 
 
 
+#    /|
+#   / +============================|
+#  X       To be continued   | \ /||
+#   \ +============================|
+#    \|

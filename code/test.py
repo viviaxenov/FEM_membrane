@@ -12,14 +12,16 @@ g.add_elem(e)
 e = mb.Element((1, 3, 2), 1e6, 0.3, 0.01, 4000)
 g.add_elem(e)
 g.set_S()
-g.set_BDmatrix()
+g.set_DBmatrix()
+g.assemble_K()
 g.a[3:6] = [0.0, 1.0, 1.0]
 g.v_a[3:6] = [1.0, 1.0, 1.0]
 g.set_sigma()
-with open('../dmp/matr.txt', 'w') as output:
+with open('../dmp/matr.txt', 'a') as output:
     for el in g.elements :
         output.write(np.array2string(el.DB, precision=1))
         output.write('\n')
+    output.write(np.array2string(g.K, precision=1))
 g.dump_vtk_grid('../dmp/usg')
 fig, axs = plt.subplots()
 polys = g.get_matplotlib_polygons()
