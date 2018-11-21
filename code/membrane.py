@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import pyvtk as pvtk
 # tbc = to be counted
+from pyvtk import PointData
 
 
 class Element:
@@ -37,6 +38,7 @@ class Grid:
     def __init__(self, n_nodes : int):
         self.n_nodes = n_nodes                              # number of nodes
         self.a = np.zeros([3*n_nodes])                      # vector of nodal displacements
+        self.v_a = np.zeros([3*n_nodes])                    # vector of nodal velocities
         self.x_0 = np.zeros([n_nodes])
         self.y_0 = np.zeros([n_nodes])                      # initial positions
         self.elements = []                                  # list of elements, will be filled later
@@ -61,30 +63,17 @@ class Grid:
         return polys
 
     def dump_vtk_grid(self, path : str):
-        u = self.a[::3]
-        v = self.a[1::3]
-        w = self.a[2::3]
-        x = self.x_0 + u
-        y = self.y_0 + v
-        point_coords = np.column_stack((x, y, w))
+        point_coords = self.a.reshape([self.n_nodes, 3])
+        point_coords[:, 0] += self.x_0
+        point_coords[:, 1] += self.y_0
+        point_velocities = self.v_a.reshape([self.n_nodes, 3])
+        pd: PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
         triangles = []
         for elem in self.elements:
             triangles.append(list(elem.node_ind))
         usg = pvtk.UnstructuredGrid(point_coords, triangle=triangles)
-        vtk = pvtk.VtkData(usg)
+        vtk = pvtk.VtkData(usg, pd)
         vtk.tofile(path, 'binary')
-
-
-
-
-
-
-
-
-
-
-
-
 
     def set_S(self):
         for elem in self.elements:
