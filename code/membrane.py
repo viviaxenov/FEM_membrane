@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+import pyvtk as pvtk
 # tbc = to be counted
 
 
@@ -58,6 +59,32 @@ class Grid:
                 vertices.append([self.x_0[i], self.y_0[i]])
             polys.append(Polygon(vertices, closed=True, fill=False, edgecolor='b'))
         return polys
+
+    def dump_vtk_grid(self, path : str):
+        u = self.a[::3]
+        v = self.a[1::3]
+        w = self.a[2::3]
+        x = self.x_0 + u
+        y = self.y_0 + v
+        point_coords = np.column_stack((x, y, w))
+        triangles = []
+        for elem in self.elements:
+            triangles.append(list(elem.node_ind))
+        usg = pvtk.UnstructuredGrid(point_coords, triangle=triangles)
+        vtk = pvtk.VtkData(usg)
+        vtk.tofile(path, 'binary')
+
+
+
+
+
+
+
+
+
+
+
+
 
     def set_S(self):
         for elem in self.elements:

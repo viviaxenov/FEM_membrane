@@ -17,7 +17,7 @@ with open('../dmp/matr.txt', 'w') as output:
     for el in g.elements :
         output.write(np.array2string(el.DB, precision=1))
         output.write('\n')
-
+g.dump_vtk_grid('../dmp/usg')
 fig, axs = plt.subplots()
 polys = g.get_matplotlib_polygons()
 for p in polys:
