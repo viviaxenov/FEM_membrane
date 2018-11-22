@@ -116,10 +116,10 @@ class Grid:
                 gamma = (self.x_0[K] - self.x_0[J])/elem.S
                 B_1 = np.array([[beta, 0, 0],                                   # see eq 1.2.4
                                 [0, gamma, 0],
-                                [beta, gamma, 0]])
-                B_2 = np.array([[gamma, beta, 0],
-                                [0, 0, 0],
                                 [0, 0, 0]])
+                B_2 = np.array([[gamma, beta, 0],
+                                [0, 0, beta],
+                                [0, 0, gamma]])
                 DB_1 = D_1@B_1
                 DB_2 = D_2@B_2
                 elem.DB[:, 3*i:3*(i+1)] = np.row_stack((DB_1, DB_2))
@@ -136,10 +136,10 @@ class Grid:
                 gamma = (self.x_0[K] - self.x_0[J])/elem.S
                 B_1 = np.array([[beta, 0, 0],                                       # see eq 1.2.4
                                 [0, gamma, 0],
-                                [beta, gamma, 0]])
+                                [0, 0, 0]])
                 B_2 = np.array([[gamma, beta, 0],
-                                [0, 0, 0],
-                                [0, 0, 0]])                                         # assuming DB was already counted
+                                [0, 0, beta],
+                                [0, 0, gamma]])                                         # assuming DB was already counted
                 B[:, 3*i:3*(i+1)] = np.row_stack((B_1, B_2))
             K_e = B.T @ elem.DB
             K_e *= 0.5*elem.S*elem.h                                                # local stiffness obtained
@@ -175,11 +175,11 @@ class Grid:
             gamma = (np.roll(x,1) - np.roll(x,2))/elem.S                            # x_k = np.roll(x,1)
             alpha = (np.roll(x,2)*np.roll(y,1) - np.roll(x,1)*np.roll(y,2))/elem.S  # x_j = np.roll(x,2)
             V = []
-            for i in range(3):
-                V_i = np.array([[0.0, 0.0, -beta[i]],
-                                [0.0, 0.0, -gamma[i]],
-                                [beta[i], gamma[i], 0.0]])
-                V.append(V_i)
+#            for i in range(3):
+#                V_i = np.array([[0.0, 0.0, -beta[i]],
+#                                [0.0, 0.0, -gamma[i]],
+#                                [beta[i], gamma[i], 0.0]])
+#                V.append(V_i)
 
             for i in range(3):
                 for j in range(3):
@@ -189,7 +189,7 @@ class Grid:
                     coef += B*gamma[i]*gamma[j]
                     coef += C*(beta[i]*gamma[j] + gamma[i]*beta[j])
                     coef /= 2.0
-                    M_ij = np.eye(3)*coef + elem.h**2*(V[i].T@V[j])
+                    M_ij = np.eye(3)*coef #+ elem.h**2*(V[i].T@V[j])
                     M_ij *= elem.rho*elem.S*elem.h/12.0                             # local submatrix assembled,
 
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
