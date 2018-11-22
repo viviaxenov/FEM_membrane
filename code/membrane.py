@@ -150,6 +150,25 @@ class Grid:
             elem.sigma = elem.DB @ a_e
 
 
+def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int, E, nu, h, rho) -> Grid:
+    res = Grid((n_x + 1)*(n_y + 1))
+
+    def index(i, j):
+        return (n_x + 1)*i + j
+
+    dx = X/n_x
+    dy = Y/n_y
+
+    for i in range(n_y + 1):
+        for j in range(n_x + 1):
+            k = index(i, j)
+            res.x_0[k], res.y_0[k] = dx*j, dy*i
+    for i in range(n_y):
+        for j in range(n_x):
+            res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
+            res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
+    return res
+
 
 #    /|
 #   / +============================|
