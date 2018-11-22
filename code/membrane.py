@@ -92,7 +92,9 @@ class Grid:
                                 [ 1.0, self.x_0[j] , self.y_0[j]],
                                 [ 1.0, self.x_0[k] , self.y_0[k]] ])
             elem.S = np.linalg.det(delta)
-
+            if elem.S < 0.0:
+                elem.node_ind = elem.node_ind[::-1]             # if for some reason they are in clockwise order instead
+                elem.S *= -1.0                                  # of counter-clockwise, change order and fix area
 
     def set_DBmatrix(self):
         for elem in self.elements:
@@ -112,8 +114,7 @@ class Grid:
                                 [0, 0, 0]])
                 DB_1 = D_1@B_1
                 DB_2 = D_2@B_2
-                elem.DB[0:3, 3*i:3*(i+1)] = DB_1
-                elem.DB[3:6, 3*i:3*(i+1)] = DB_2
+                elem.DB[:, 3*i:3*(i+1)] = np.row_stack((DB_1, DB_2))
 
     def assemble_K(self):                                                        # K = 0.5Sh*B.T @(DB) see eq 1.4.1
         for elem in self.elements:
@@ -140,6 +141,47 @@ class Grid:
                     I , J = elem.node_ind[i], elem.node_ind[j]
                     self.K[3*I:3*(I+1), 3*J:3*(J+1)] += K_e[3*i:3*(i+1), 3*j:3*(j+1)]
 
+    def assemble_f(self):
+        self.f.fill(0.0)
+        for elem in self.elements:
+            for i in range(3):
+                I = elem.node_ind[i]
+                self.f[3*I:3*(I+1)] += elem.S*elem.h*elem.b/6.0                     # see eq. 1.5.3
+
+    def assemble_M(self):
+        for elem in self.elements:
+            I, J, K = elem.node_ind
+
+            x = self.x_0[[I, J, K]]
+            y = self.y_0[[I, J, K]]
+            x -= np.average(x)
+            y -= np.average(y)                                                      # switching to barycenter cords
+
+            A = x.T@x
+            B = y.T@y
+            C = x.T@y                                                               # coefs from mass matrix eq
+
+            beta = -(np.roll(y,1) - np.roll(y,2))/elem.S                            # see eq 1.1.6
+            gamma = (np.roll(x,1) - np.roll(x,2))/elem.S                            # x_k = np.roll(x,1)
+            alpha = (np.roll(x,2)*np.roll(y,1) - np.roll(x,1)*np.roll(y,2))/elem.S  # x_j = np.roll(x,2)
+            V = []
+            for i in range(3):
+                V_i = np.array([[0.0, 0.0, -beta[i]],
+                                [0.0, 0.0, -gamma[i]],
+                                [beta[i], gamma[i], 0.0]])
+                V.append(V_i)
+
+            for i in range(3):
+                for j in range(3):
+                    coef = 12.0*alpha[i]*alpha[j]                                   # see eq 1.6.3
+                    coef += A*beta[i]*beta[j]
+                    coef += B*gamma[i]*gamma[j]
+                    coef += C*(beta[i]*gamma[j] + gamma[i]*beta[j])
+                    coef /= 2.0
+                    M_ij = np.eye(3)*coef + elem.h**2*(V[i].T@V[j])
+                    M_ij *= elem.rho*elem.S*elem.h/12.0                             # local submatrix assembled,
+
+                    self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
 
     def set_sigma(self):
         for elem in self.elements:
@@ -150,7 +192,9 @@ class Grid:
             elem.sigma = elem.DB @ a_e
 
 
-def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int, E, nu, h, rho) -> Grid:
+def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
+                            E : np.float64, nu : np.float64,
+                            h : np.float64, rho : np.float64) -> Grid:
     res = Grid((n_x + 1)*(n_y + 1))
 
     def index(i, j):
