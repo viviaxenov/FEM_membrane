@@ -14,6 +14,7 @@ class Element:
         self.nu = nu                                        # Poisson's ratio
         self.h = h                                          # thickness
         self.rho = rho                                      # density
+        self.b = np.zeros([3])
 
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
         self.S = 0.0                                        # doubled element area; tbc
@@ -45,6 +46,12 @@ class Grid:
         self.M = np.zeros([3*n_nodes, 3*n_nodes])           # global mass matrix
         self.f = np.zeros([3*n_nodes])                      # load vector
 
+        self.P = []                                         # some inverted matrix, may be will be removed if time
+                                                            # integration method changes; now i want to test it so
+                                                            # use the same thing i used in 1D test:
+                                                            # P = (M + \tau**2 K)^(-1)
+        self.tau = 0.0                                      # optimal timestep (that everything converges)
+
     def add_elem(self, elem : Element):
         if(max(*elem.node_ind) >= self.n_nodes) or (min(*elem.node_ind) < 0):
             raise ValueError("Element's node indices out of range")
@@ -62,7 +69,8 @@ class Grid:
         return polys
 
     def dump_vtk_grid(self, path : str):
-        point_coords = self.a.reshape([self.n_nodes, 3])
+        point_coords = np.zeros([self.n_nodes, 3])
+        point_coords += self.a.reshape([self.n_nodes, 3])
         point_coords[:, 0] += self.x_0
         point_coords[:, 1] += self.y_0
         point_velocities = self.v_a.reshape([self.n_nodes, 3])
@@ -135,7 +143,9 @@ class Grid:
                 B[:, 3*i:3*(i+1)] = np.row_stack((B_1, B_2))
             K_e = B.T @ elem.DB
             K_e *= 0.5*elem.S*elem.h                                                # local stiffness obtained
-                                                                                    # projecting to global matrix
+            #with open('../dmp/matr.txt', 'a') as output:
+            #    output.write(np.array2string(K_e, precision=1))                                                      # projecting to global matrix
+            #    output.write('\n\n\n')
             for i in range(3):
                 for j in range(3):
                     I , J = elem.node_ind[i], elem.node_ind[j]
@@ -146,7 +156,7 @@ class Grid:
         for elem in self.elements:
             for i in range(3):
                 I = elem.node_ind[i]
-                self.f[3*I:3*(I+1)] += elem.S*elem.h*elem.b/6.0                     # see eq. 1.5.3
+                self.f[3*I:3*(I+1)] -= elem.S*elem.h*elem.b/6.0                     # see eq. 1.5.3
 
     def assemble_M(self):
         for elem in self.elements:
@@ -173,6 +183,7 @@ class Grid:
 
             for i in range(3):
                 for j in range(3):
+                    I, J = elem.node_ind[i], elem.node_ind[j]
                     coef = 12.0*alpha[i]*alpha[j]                                   # see eq 1.6.3
                     coef += A*beta[i]*beta[j]
                     coef += B*gamma[i]*gamma[j]
@@ -183,6 +194,25 @@ class Grid:
 
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
 
+    def get_inv_matrix(self, tau : np.float64):                                     # getting matrix P = (M + \tau^2K)^-1
+        self.P = np.linalg.inv(self.M + self.K*tau**2)
+
+    def estimate_tau(self):
+        def tau(e : Element):
+            return  np.sqrt(e.S*e.rho/e.E)                                          # this may be wrong in counting both diameter
+        tau_max = 0.5*max([tau(e) for e in self.elements])                          # and c, but i want to test the thing already
+        return tau_max
+
+    def ready(self):
+        self.set_S()
+        self.set_DBmatrix()
+        self.assemble_K()
+        self.assemble_f()
+        self.assemble_M()
+        self.set_sigma()
+        self.tau = self.estimate_tau()
+        self.get_inv_matrix(self.tau)
+
     def set_sigma(self):
         for elem in self.elements:
             I, J, K = elem.node_ind
@@ -191,6 +221,11 @@ class Grid:
                                    self.a[3*K:3*(K+1)]])                            # getting displacement vector from global array
             elem.sigma = elem.DB @ a_e
 
+    def iteration(self):
+        self.assemble_f()
+        self.v_a = self.P @ (self.M @ self.v_a - self.tau*(self.K @ self.a + self.f))
+        self.a += self.v_a*self.tau
+        self.set_sigma()
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
                             E : np.float64, nu : np.float64,

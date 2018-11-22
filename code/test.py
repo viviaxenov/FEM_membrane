@@ -4,21 +4,21 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 
 
-g = mb.generate_uniform_grid(10.0, 15.0, 10, 15, 1e5, 0.3, 0.1, 4000)
-g.set_S()
-g.set_DBmatrix()
-g.assemble_K()
+# g = mb.generate_uniform_grid(10.0, 15.0, 10, 15, 1e5, 0.3, 0.1, 4000)
+n_x, n_y = 2, 3
+I = n_x*n_y//2 + n_x//2
+g = mb.generate_uniform_grid(np.float64(n_x), np.float64(n_y), n_x, n_y, 1e5, 0.3, 0.1, 4000)
+# g.v_a[3*I:3*(I + 1)] = [0.0, 0.0, 0.1]
+g.ready()
+g.dump_vtk_grid('../dmp/usg0')
+# for i in range(45):
+#     g.iteration()
+#     g.dump_vtk_grid(f'../dmp/mov/usg{i:d}')
 
-node = 35
-g.a[3*(node):3*(node + 1)] = [0.3, 0.3, 0.0]
-g.set_sigma()
-g.dump_vtk_grid('../dmp/usg')
-
-# with open('../dmp/matr.txt', 'a') as output:
-#     for el in g.elements :
-#         output.write(np.array2string(el.DB, precision=1))
-#         output.write('\n')
-#     output.write(np.array2string(g.K, precision=1))
+with open('../dmp/matr.txt', 'a') as output:
+    for el in g.elements :
+        output.write(np.array2string(el.DB, precision=1, separator=', '))
+        output.write('\n')
 # fig, axs = plt.subplots()
 # polys = g.get_matplotlib_polygons()
 # for p in polys:
