@@ -5,13 +5,13 @@ from matplotlib.patches import Polygon
 
 
 n_x, n_y = 20, 20
-I = (n_x+1)*n_y//2 + n_x//2
+I = (n_x+1)*n_y + 2*n_x
 g = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, 1e9, 0.4, 0.001, 900)
 #g.a[3*I:3*(I + 1)] = [0.0, 0.0, 0.1]
 g.elements[I].b = np.array([0.0, 0.0, 1e11])
 g.ready()
 g.dump_vtk_grid('../dmp/mov/usg0')
-for i in range(1,50):
+for i in range(1,100):
     g.iteration()
     g.dump_vtk_grid(f'../dmp/mov/usg{i:d}')
 
