@@ -35,6 +35,7 @@ class Element:
 
 
 class Grid:
+    """2D membrane in 3D space model"""
     def __init__(self, n_nodes : int):
         self.n_nodes = n_nodes                              # number of nodes
         self.a = np.zeros([3*n_nodes])                      # vector of nodal displacements
@@ -94,6 +95,7 @@ class Grid:
         vtk.tofile(path, 'binary')
 
     def set_S(self):
+        """"Calculates doubled area of each element; this will be used in further computations"""
         for elem in self.elements:
             i, j, k = elem.node_ind
             delta = np.array([  [ 1.0, self.x_0[i] , self.y_0[i]],
@@ -105,6 +107,7 @@ class Grid:
                 elem.S *= -1.0                                  # of counter-clockwise, change order and fix area
 
     def set_DBmatrix(self):
+        """"Calculates matrix linking stress and displacement for each element"""
         for elem in self.elements:
             D_1, D_2 = elem.get_Dmatrices()
             for i in range(3):
@@ -125,6 +128,7 @@ class Grid:
                 elem.DB[:, 3*i:3*(i+1)] = np.row_stack((DB_1, DB_2))
 
     def assemble_K(self):                                                        # K = 0.5Sh*B.T @(DB) see eq 1.4.1
+        """"Calculates global stiffness matrix for entire grid; used in both static and dynamic problems"""
         for elem in self.elements:
             B = np.zeros([6, 9])
             for i in range(3):
@@ -143,15 +147,13 @@ class Grid:
                 B[:, 3*i:3*(i+1)] = np.row_stack((B_1, B_2))
             K_e = B.T @ elem.DB
             K_e *= 0.5*elem.S*elem.h                                                # local stiffness obtained
-            #with open('../dmp/matr.txt', 'a') as output:
-            #    output.write(np.array2string(K_e, precision=1))                                                      # projecting to global matrix
-            #    output.write('\n\n\n')
             for i in range(3):
                 for j in range(3):
                     I , J = elem.node_ind[i], elem.node_ind[j]
                     self.K[3*I:3*(I+1), 3*J:3*(J+1)] += K_e[3*i:3*(i+1), 3*j:3*(j+1)]
 
     def assemble_f(self):
+        """"Calculates nodal force vector from elements' distributed force vectors"""
         self.f.fill(0.0)
         for elem in self.elements:
             for i in range(3):
@@ -159,6 +161,7 @@ class Grid:
                 self.f[3*I:3*(I+1)] -= elem.S*elem.h*elem.b/6.0                     # see eq. 1.5.3
 
     def assemble_M(self):
+        """"Assembles mass matrix used in dynamic problem"""
         for elem in self.elements:
             I, J, K = elem.node_ind
 
@@ -174,7 +177,9 @@ class Grid:
             beta = -(np.roll(y,1) - np.roll(y,2))/elem.S                            # see eq 1.1.6
             gamma = (np.roll(x,1) - np.roll(x,2))/elem.S                            # x_k = np.roll(x,1)
             alpha = (np.roll(x,2)*np.roll(y,1) - np.roll(x,1)*np.roll(y,2))/elem.S  # x_j = np.roll(x,2)
-            V = []
+#           this was used when we used a custom 'Kirchoff-Love element' which didn't seem to work
+#           but maybe it'll be back
+#            V = []
 #            for i in range(3):
 #                V_i = np.array([[0.0, 0.0, -beta[i]],
 #                                [0.0, 0.0, -gamma[i]],
@@ -198,6 +203,7 @@ class Grid:
         self.P = np.linalg.inv(self.M + self.K*tau**2)
 
     def estimate_tau(self):
+        """"Estimates time step that tau < diam/c, c ~ sqrt(E/rho) (that everything converges"""
         def tau(e : Element):
             return  np.sqrt(e.S*e.rho/e.E)                                          # this may be wrong in counting both diameter
         tau_max = 0.5*max([tau(e) for e in self.elements])                          # and c, but i want to test the thing already
@@ -214,6 +220,7 @@ class Grid:
         self.get_inv_matrix(self.tau)
 
     def set_sigma(self):
+        """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
         for elem in self.elements:
             I, J, K = elem.node_ind
             a_e = np.concatenate([self.a[3*I:3*(I+1)],
@@ -226,6 +233,22 @@ class Grid:
         self.v_a = self.P @ (self.M @ self.v_a - self.tau*(self.K @ self.a + self.f))
         self.a += self.v_a*self.tau
         self.set_sigma()
+
+    def iteration_Newmark(self, tau : np.float64, beta_1 : np.float64, beta_2 : np.float64):
+        self.assemble_f()
+
+        a_tt = np.linalg.solve(self.M, -(self.K @ self.a + self.f))
+        a_est = self.a + tau*self.v_a + 0.5*(1 - beta_2)*tau**2*a_tt
+        v_est = self.v_a + (1 - beta_1)*tau*a_tt
+
+        A = self.M + 0.5*beta_2*tau**2*self.K
+        a_tt_next = np.linalg.solve(A, -(self.K@a_est + self.f))                   # actually we need f_n+1 here
+
+        self.v_a = v_est + beta_1*tau*a_tt_next
+        self.a = a_est + 0.5*beta_2*tau**2*a_tt_next
+
+        self.set_sigma()
+
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
                             E : np.float64, nu : np.float64,
