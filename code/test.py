@@ -1,35 +1,91 @@
 import code.membrane as mb
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
+import os
+
+E = 1e9
+nu = 0.4
+h = 0.001
+rho = 900
+magnitude = 2e11
 
 
-n_x, n_y = 20, 20
-I = (n_x+1)*n_y + 2*n_x
-g = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, 1e9, 0.4, 0.001, 900)
-#g.a[3*I:3*(I + 1)] = [0.0, 0.0, 0.1]
-magnitude = 1e11
-angle = np.pi/4
-force = magnitude*np.array([0.0, np.cos(angle), np.sin(angle)])
-g.elements[I].b = force
-g.ready()
-g.dump_vtk_grid('../dmp/mov/usg0')
-for i in range(1, 150):
-#   g.iteration_Newmark(g.tau, 0.5, 0.5)            # beta_2 >= beta_1 >= 0.5 makes Newmark stable regardless of tau
-                                                    # if beta_2 = 0.5 it's at least 2nd order
-    g.iteration()
-    g.dump_vtk_grid(f'../dmp/mov/usg{i:d}')
+def test_sequence(dim: int, iter_per_frame: int, iters: int = 150, beta: np.float64 = None):
+    n_x = dim
+    n_y = dim
+    normal = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, E, nu, h, rho)
+    skew = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, E, nu, h, rho)
+    free = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, E, nu, h, rho)
 
-#with open('../dmp/matr.txt', 'a') as output:
-#    for el in g.elements :
-#        output.write(np.array2string(el.DB, precision=1, separator=', '))
-#        output.write('\n')
-# fig, axs = plt.subplots()
-# polys = g.get_matplotlib_polygons()
-# for p in polys:
-#     axs.add_patch(p)
-# axs.set_xlim((-.5, 15.5))
-# axs.set_ylim((-.5, 15.5))
+    i, j = n_x//2, n_y//2
+    Ind_vertex = (n_x + 1)*i + j
+    Ind_elem = 2*(n_x*i + j)
+
+    normal.elements[Ind_elem].b += magnitude*np.array([0.0, 0.0, 1.0])
+    skew.elements[Ind_elem].b += magnitude*np.array([0.0, np.cos(np.pi/4), np.sin(np.pi/4)])
+    free.a[3*Ind_vertex:3*(Ind_vertex + 1)] += np.array([0.0, 0.0, 0.1])
+
+    if beta is None:
+        path = f'../res/simple_d{dim:d}_ipf{iter_per_frame:d}'
+    else:
+        path = f'../res/beta{beta:.1f}_d{dim:d}_ipf{iter_per_frame:d}'
+
+    if not os.path.exists(path):
+        os.mkdir(path)
+    names = {normal: 'normal', skew: 'skew', free: 'free'}
+    for s in ['normal', 'skew', 'free']:
+        dirpath = f'{path}/{s}'
+        if not os.path.exists(dirpath):
+            os.mkdir(dirpath)
+
+    for g in [normal, skew, free]:
+        g.ready()
+        tau = g.estimate_tau()/iter_per_frame
+        if beta is None:
+            g.get_inv_matrix(tau)
+            g.tau = tau
+            g.dump_vtk_grid(f'{path}/{names[g]}/{names[g][0]}0')
+            for k in range(1, iters + 1):
+                for p in range(iter_per_frame):
+                    g.iteration()
+                g.dump_vtk_grid(f'{path}/{names[g]}/{names[g][0]}{k:d}')
+        else:
+            g.set_Newmark_params(0.5, beta, tau)
+            g.dump_vtk_grid(f'{path}/{names[g]}/{names[g][0]}0')
+            for k in range(1, iters + 1):
+                for p in range(iter_per_frame):
+                    g.iteration_Newmark()
+                g.dump_vtk_grid(f'{path}/{names[g]}/{names[g][0]}{k:d}')
+
+dim = 30
+iters = 150
+test_sequence(dim, 1, iters)
+test_sequence(dim, 1, iters, beta=0.5)
+test_sequence(dim, 1, iters, beta=0.7)
+test_sequence(dim, 1, iters, beta=1.0)
+
+test_sequence(dim, 5, iters)
+test_sequence(dim, 5, iters, beta=0.5)
+test_sequence(dim, 5, iters, beta=1.0)
+
+#n_x, n_y = 20, 20
+#g = mb.generate_uniform_grid(1.0, 1.0, n_x, n_y, 1e9, 0.4, 0.001, 900)
+#i, j = 10, 10
+##g.a[3*Ind_vertex:3*(Ind_vertex + 1)] = [0.0, 0.0, 0.1]
+#magnitude = 1e11
+#angle = np.pi/4
+#force = magnitude*np.array([0.0, np.cos(angle), np.sin(angle)])
+#g.elements[Ind_elem].b = force
+#g.ready()
 #
+#beta_2 = 1.0
+#scale = 1.0
 #
-# fig.savefig('../dmp/patch.png', fmt='png')
+#g.set_Newmark_params(0.5, beta_2, g.estimate_tau()/scale)
+#path = '../dmp/Newmark'
+#g.dump_vtk_grid(f'{path}/usg0')
+#for i in range(1, 100):
+#   g.iteration_Newmark()                            # beta_2 >= beta_1 >= 0.5 makes Newmark stable regardless of tau
+#                                                    # if beta_1 == 0.5 it's at least 2nd order
+#   g.dump_vtk_grid(f'{path}/usg{i:d}')
+
+

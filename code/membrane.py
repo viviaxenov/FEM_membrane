@@ -39,7 +39,8 @@ class Grid:
     def __init__(self, n_nodes : int):
         self.n_nodes = n_nodes                              # number of nodes
         self.a = np.zeros([3*n_nodes])                      # vector of nodal displacements
-        self.v_a = np.zeros([3*n_nodes])                    # vector of nodal velocities
+        self.a_t = np.zeros([3 * n_nodes])                  # vector of nodal velocities
+        self.a_tt = np.zeros([3 * n_nodes])                 # vector of nodal accelerations
         self.x_0 = np.zeros([n_nodes])
         self.y_0 = np.zeros([n_nodes])                      # initial positions
         self.elements = []                                  # list of elements, will be filled later
@@ -52,6 +53,9 @@ class Grid:
                                                             # use the same thing i used in 1D test:
                                                             # P = (M + \tau**2 K)^(-1)
         self.tau = 0.0                                      # optimal timestep (that everything converges)
+        self.beta_1 = 0.0                                   # Newmark algorithm params
+        self.beta_2 = 0.0
+        self.A = []
 
     def add_elem(self, elem : Element):
         if(max(*elem.node_ind) >= self.n_nodes) or (min(*elem.node_ind) < 0):
@@ -74,8 +78,9 @@ class Grid:
         point_coords += self.a.reshape([self.n_nodes, 3])
         point_coords[:, 0] += self.x_0
         point_coords[:, 1] += self.y_0
-        point_velocities = self.v_a.reshape([self.n_nodes, 3])
+        point_velocities = self.a_t.reshape([self.n_nodes, 3])
         pd: pvtk.PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
+        pd.append(pvtk.Scalars(point_coords[:, 2], name='z'))
 
         triangles = []
         sigmas = []
@@ -216,8 +221,7 @@ class Grid:
         self.assemble_f()
         self.assemble_M()
         self.set_sigma()
-        self.tau = self.estimate_tau()
-        self.get_inv_matrix(self.tau)
+        self.a_tt = np.linalg.solve(self.M, -(self.K @ self.a + self.f))            # count acceleration to satisfy equation
 
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
@@ -230,22 +234,27 @@ class Grid:
 
     def iteration(self):
         self.assemble_f()
-        self.v_a = self.P @ (self.M @ self.v_a - self.tau*(self.K @ self.a + self.f))
-        self.a += self.v_a*self.tau
+        self.a_t = self.P @ (self.M @ self.a_t - self.tau * (self.K @ self.a + self.f))
+        self.a += self.a_t * self.tau
         self.set_sigma()
 
-    def iteration_Newmark(self, tau : np.float64, beta_1 : np.float64, beta_2 : np.float64):
+    def set_Newmark_params(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
+        self.tau = tau
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+        self.A = np.linalg.inv(self.M + 0.5*beta_2*tau**2*self.K)
+
+    def iteration_Newmark(self):
         self.assemble_f()
 
-        a_tt = np.linalg.solve(self.M, -(self.K @ self.a + self.f))
-        a_est = self.a + tau*self.v_a + 0.5*(1 - beta_2)*tau**2*a_tt
-        v_est = self.v_a + (1 - beta_1)*tau*a_tt
+        a_est = self.a + self.tau * self.a_t + 0.5 * (1 - self.beta_2) * self.tau ** 2 * self.a_tt
+        v_est = self.a_t + (1 - self.beta_1) * self.tau * self.a_tt
 
-        A = self.M + 0.5*beta_2*tau**2*self.K
-        a_tt_next = np.linalg.solve(A, -(self.K@a_est + self.f))                   # actually we need f_n+1 here
+        a_tt_next =  self.A @ (-self.K@a_est - self.f)                   # actually we need f_n+1 here
 
-        self.v_a = v_est + beta_1*tau*a_tt_next
-        self.a = a_est + 0.5*beta_2*tau**2*a_tt_next
+        self.a_tt = a_tt_next
+        self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
+        self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
 
         self.set_sigma()
 
