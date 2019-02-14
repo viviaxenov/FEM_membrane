@@ -1,8 +1,8 @@
 import code.membrane as mb
 
 import numpy as np
-import matplotlib.pyplot as plt
 
+import time
 
 def get_node_index(node_cords : np.ndarray, n_x : int):
     return node_cords[0] + (n_x + 1)*node_cords[1]                    #
@@ -56,18 +56,37 @@ sample_u = []
 sample_v = []
 
 
+tp = np.dtype([('k', np.int32), ('n_0', np.int32),
+                        ('iterations', np.int32), ('t_ready', np.float64),
+                        ('t_Newmark', np.float64), ('t_iters', np.float64)])
+
+
+stats = np.array([(-1, -1, -1, -1, -1, -1)], dtype=tp)
+
 for k in range(splits):
     g = mb.generate_uniform_grid(size, size, n_0, n_0, E, nu, h, rho)       # created a grid with given params
     elem_ind = get_elem_index(loaded_elem_cords, n_0)
     for i in elem_ind:
         g.elements[i].b += magnitude*np.array([0.0, 0.0, 1.0])              # added normal load to elements
 
+    start = time.time()
     g.ready()                                                               # preparing grid
-    tau = g.estimate_tau()
-    g.set_Newmark_params(0.5, 0.5, tau)
+    stop = time.time()
+    t_ready = stop - start
 
+    tau = g.estimate_tau()
+
+    start = time.time()
+    g.set_Newmark_noinverse(0.5, 0.5, tau)
+    stop = time.time()
+    t_Newmark = stop - start
+
+    start = time.time()
     for i in range(iterations):                                             # iterate
-        g.iteration_Newmark()
+        g.iteration_Newmark_noinverse()
+    stop = time.time()
+    t_iters = stop - start
+
     g.dump_vtk_grid(f'../res/conv/convergence{k : d}')
 
     sample_indices = get_node_index(sample_cords, n_0)
@@ -76,16 +95,21 @@ for k in range(splits):
     for index in sample_indices:                                            # getting samples
         s_u = np.append(s_u, g.a[3*index:3*(index + 1)])
         s_v = np.append(s_v, g.a_t[3*index:3*(index + 1)])
-    sample_u.append(s_u)
-    sample_v.append(s_v)
+#    sample_u.append(s_u)
+#    sample_v.append(s_v)
+    np.save(f'../res/conv/sample_u{k}', s_u)
+    np.save(f'../res/conv/sample_v{k}', s_v)
+
+    stats = np.append(stats, np.array([(k, n_0, iterations, t_ready, t_Newmark, t_iters)], dtype=tp))
+    np.save('../res/conv/stats', stats)
 
     n_0 *= 2
     sample_cords *= 2
     loaded_elem_cords = split_elems(loaded_elem_cords)
     iterations *= 2
-sample_u = np.array(sample_u)
-sample_v = np.array(sample_v)
-
-np.save('../res/conv/sample_u', sample_u)
-np.save('../res/conv/sample_v', sample_v)
+#sample_u = np.array(sample_u)
+#sample_v = np.array(sample_v)
+#
+#np.save('../res/conv/sample_u', sample_u)
+#np.save('../res/conv/sample_v', sample_v)
 

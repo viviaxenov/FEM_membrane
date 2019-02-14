@@ -1,5 +1,9 @@
 import numpy as np
 from matplotlib.patches import Polygon
+
+from scipy import sparse as sp
+import scipy.sparse.linalg
+
 import pyvtk as pvtk
 # tbc = to be counted/coded/computed/
 
@@ -44,8 +48,10 @@ class Grid:
         self.x_0 = np.zeros([n_nodes])
         self.y_0 = np.zeros([n_nodes])                      # initial positions
         self.elements = []                                  # list of elements, will be filled later
-        self.K = np.zeros([3*n_nodes, 3*n_nodes])           # global stiffness matrix
-        self.M = np.zeros([3*n_nodes, 3*n_nodes])           # global mass matrix
+        self.K = sp.dok_matrix(
+            (3*n_nodes, 3*n_nodes), dtype=np.float64)       # global stiffness matrix
+        self.M = sp.dok_matrix(
+            (3*n_nodes, 3*n_nodes), dtype=np.float64)       # global mass matrix
         self.f = np.zeros([3*n_nodes])                      # load vector
 
         self.P = []                                         # some inverted matrix, may be will be removed if time
@@ -156,6 +162,7 @@ class Grid:
                 for j in range(3):
                     I , J = elem.node_ind[i], elem.node_ind[j]
                     self.K[3*I:3*(I+1), 3*J:3*(J+1)] += K_e[3*i:3*(i+1), 3*j:3*(j+1)]
+        self.K = self.K.tocsc()
 
     def assemble_f(self):
         """"Calculates nodal force vector from elements' distributed force vectors"""
@@ -203,9 +210,10 @@ class Grid:
                     M_ij *= elem.rho*elem.S*elem.h/12.0                             # local submatrix assembled,
 
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
+        self.M = self.M.tocsc()
 
     def get_inv_matrix(self, tau : np.float64):                                     # getting matrix P = (M + \tau^2K)^-1
-        self.P = np.linalg.inv(self.M + self.K*tau**2)
+        self.P = sp.linalg.inv(self.M + self.K*tau**2)
 
     def estimate_tau(self):
         """"Estimates time step that tau < diam/c, c ~ sqrt(E/rho) (that everything converges"""
@@ -221,7 +229,7 @@ class Grid:
         self.assemble_f()
         self.assemble_M()
         self.set_sigma()
-        self.a_tt = np.linalg.solve(self.M, -(self.K @ self.a + self.f))            # count acceleration to satisfy equation
+        self.a_tt = sp.linalg.spsolve(self.M, -(self.K.dot(self.a) + self.f))            # count acceleration to satisfy equation
 
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
@@ -234,7 +242,7 @@ class Grid:
 
     def iteration(self):
         self.assemble_f()
-        self.a_t = self.P @ (self.M @ self.a_t - self.tau * (self.K @ self.a + self.f))
+        self.a_t = self.P.dot((self.M.dot(self.a_t) - self.tau * (self.K.dot(self.a) + self.f)))
         self.a += self.a_t * self.tau
         self.set_sigma()
 
@@ -242,7 +250,7 @@ class Grid:
         self.tau = tau
         self.beta_1 = beta_1
         self.beta_2 = beta_2
-        self.A = np.linalg.inv(self.M + 0.5*beta_2*tau**2*self.K)
+        self.A = sp.linalg.inv(self.M + 0.5*beta_2*tau**2*self.K)
 
     def iteration_Newmark(self):
         self.assemble_f()
@@ -250,7 +258,7 @@ class Grid:
         a_est = self.a + self.tau * self.a_t + 0.5 * (1 - self.beta_2) * self.tau ** 2 * self.a_tt
         v_est = self.a_t + (1 - self.beta_1) * self.tau * self.a_tt
 
-        a_tt_next =  self.A @ (-self.K@a_est - self.f)                   # actually we need f_n+1 here
+        a_tt_next =  self.A.dot((-self.K.dot(a_est) - self.f))                   # actually we need f_n+1 here
 
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
@@ -258,10 +266,29 @@ class Grid:
 
         self.set_sigma()
 
+    def set_Newmark_noinverse(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
+        """Sets params for Newmark iteration without preliminary inverting A matrix"""
+        self.tau = tau
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+        self.A = self.M + 0.5*beta_2*tau**2*self.K
+
+    def iteration_Newmark_noinverse(self):
+        """"Newmark iteration not using preliminary inverted matrix A (solving at each step)"""
+        self.assemble_f()
+
+        a_est = self.a + self.tau * self.a_t + 0.5 * (1 - self.beta_2) * self.tau ** 2 * self.a_tt
+        v_est = self.a_t + (1 - self.beta_1) * self.tau * self.a_tt
+
+        a_tt_next = sp.linalg.spsolve(self.A, (-self.K.dot(a_est) - self.f))                   # actually we need f_n+1 here
+
+        self.a_tt = a_tt_next
+        self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
+
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
-                            E : np.float64, nu : np.float64,
-                            h : np.float64, rho : np.float64) -> Grid:
+                        E : np.float64, nu : np.float64,
+                        h : np.float64, rho : np.float64) -> Grid:
     res = Grid((n_x + 1)*(n_y + 1))
 
     def index(i, j):
