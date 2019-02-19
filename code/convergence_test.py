@@ -1,4 +1,4 @@
-import code.membrane as mb
+import membrane as mb
 
 import numpy as np
 
@@ -31,7 +31,7 @@ E = 1e6
 nu = 0.45
 h = 0.001
 rho = 900
-magnitude = 1e7
+magnitude = 1e8
 size = 1.0
 
 
@@ -87,7 +87,7 @@ for k in range(splits):
     stop = time.time()
     t_iters = stop - start
 
-    g.dump_vtk_grid(f'../res/conv/convergence{k : d}')
+    g.dump_vtk_grid('../res/conv/convergence{0:d}'.format(k))
 
     sample_indices = get_node_index(sample_cords, n_0)
     s_u = []
@@ -97,8 +97,8 @@ for k in range(splits):
         s_v = np.append(s_v, g.a_t[3*index:3*(index + 1)])
 #    sample_u.append(s_u)
 #    sample_v.append(s_v)
-    np.save(f'../res/conv/sample_u{k}', s_u)
-    np.save(f'../res/conv/sample_v{k}', s_v)
+    np.save('../res/conv/sample_u{0:d}'.format(k), s_u)
+    np.save('../res/conv/sample_v{0:d}'.format(k), s_v)
 
     stats = np.append(stats, np.array([(k, n_0, iterations, t_ready, t_Newmark, t_iters)], dtype=tp))
     np.save('../res/conv/stats', stats)

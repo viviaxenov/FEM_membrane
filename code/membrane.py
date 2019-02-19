@@ -34,8 +34,8 @@ class Element:
         D_2 *= D
         return D_1, D_2
 
-    def to_string(self):
-        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
+#    def to_string(self):
+#        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
 
 
 class Grid:
@@ -85,7 +85,7 @@ class Grid:
         point_coords[:, 0] += self.x_0
         point_coords[:, 1] += self.y_0
         point_velocities = self.a_t.reshape([self.n_nodes, 3])
-        pd: pvtk.PointData = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
+        pd = pvtk.PointData(pvtk.Vectors(point_velocities, name='Velocity'))
         pd.append(pvtk.Scalars(point_coords[:, 2], name='z'))
 
         triangles = []
@@ -284,6 +284,7 @@ class Grid:
 
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
+        self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
 
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
