@@ -1,28 +1,31 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-sample_u = np.load('../res/conv/sample_u.npy')
-sample_v = np.load('../res/conv/sample_v.npy')
 
-d_u = sample_u[1:] - sample_u[:-1]
-d_v = sample_v[1:] - sample_v[:-1]
+splits = []
+diffs = []
 
-diffs = np.hstack((d_u, d_v))
-norms = np.linalg.norm(diffs, axis=1)
+for k in range(6):
+    sample_prev = np.append(np.load(f'sample_u{k:d}.npy'), np.load(f'sample_v{k:d}'))
+    sample_next = np.append(np.load(f'sample_u{k + 1:d}.npy'), np.load(f'sample_v{k + 1:d}'))
+    diff = np.linalg.norm(sample_next - sample_prev, ord=2)
+    splits += [k]
+    diffs += [diff]
 
-xs = np.arange(1,6)
+splits = np.array(splits)
+diffs = np.array(diffs)
 
 fig, axs = plt.subplots(1,2)
 
 ax = axs[0]
-ax.plot(xs, norms, 'bs')
+ax.plot(splits, diffs, 'bs')
 ax.grid(True)
 
 ax = axs[1]
-ax.plot(xs, np.log2(norms), 'rs-')
+ax.plot(splits, np.log2(diffs), 'rs-')
 ax.grid(True)
 
 fig.savefig('../res/conv.png', fmt='png')
 
-print(norms)
+print(diffs)
 
