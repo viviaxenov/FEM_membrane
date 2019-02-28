@@ -217,8 +217,8 @@ class Grid:
         """Applies constraint a_t = velocity = const in poin node_index"""
         # TODO: verification 
         self.a_t[3*node_index : 3*(node_index + 1)] = velocity
-        self.K[3*node_index : 3*(node_index + 1), : ].fill(0)
-        self.M[3*node_index : 3*(node_index + 1), : ].fill(0)
+        self.K[3*node_index : 3*(node_index + 1), : ] = 0
+        self.M[3*node_index : 3*(node_index + 1), : ] = 0
         self.M[3*node_index : 3*(node_index + 1), 3*node_index : 3*(node_index + 1)] = np.eye(3)
         self.f[3*node_index : 3*(node_index + 1)] = np.zeros(3)
 	
