@@ -4,10 +4,28 @@ from matplotlib.patches import Polygon
 from scipy import sparse as sp
 import scipy.sparse.linalg
 
+import numba as nb
+
 import pyvtk as pvtk
 # tbc = to be counted/coded/computed/
 
 
+# tup_type = nb.typeof((1, 1, 1))
+# matr_type = nb.typeof(np.zeros([6, 9], dtype=np.float64)) 
+# vec_type = nb.typeof(np.zeros(3, dtype=np.float64))
+# spec = [
+#             ('node_ind', tup_type),
+#             ('E', nb.float64),
+#             ('nu', nb.float64),
+#             ('h', nb.float64), 
+#             ('rho', nb.float64),
+#             ('b', vec_type),
+#             ('DB', matr_type),
+#             ('S', nb.float64),
+#             ('sigma', nb.float64[:]),
+#     ]
+# 
+# @nb.jitclass(spec)
 class Element:
     """Triangle finite element"""
     def __init__(self, node_ind : (int, int, int),
@@ -18,7 +36,7 @@ class Element:
         self.nu = nu                                        # Poisson's ratio
         self.h = h                                          # thickness
         self.rho = rho                                      # density
-        self.b = np.zeros([3])
+        self.b = np.zeros(3, dtype=np.float64)
 
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
         self.S = 0.0                                        # doubled element area; tbc
@@ -34,8 +52,8 @@ class Element:
         D_2 *= D
         return D_1, D_2
 
-#    def to_string(self):
-#        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
+    #    def to_string(self):
+    #        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
 
 
 class Grid:
@@ -69,6 +87,13 @@ class Grid:
         if elem.E < 0.0 or elem.nu < 0 or elem.nu > 0.5 or elem.rho <= 0 or elem.h <= 0:
             raise ValueError("Wrong element params:\n" + elem.to_string())
         self.elements.append(elem)
+
+    def get_elem_midpoint(self, elem_ind : int) -> np.ndarray:
+        """Returns middle point of element"""
+        indices = np.array(self.elements[elem_ind].node_ind)
+        vertex_coords = np.vstak((self.x_0[indices], self.y_0[indices]))
+        return vertex_coords.mean(axis=1)
+        
 
     def get_matplotlib_polygons(self) -> [Polygon]:
         polys = []
@@ -285,6 +310,8 @@ class Grid:
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
+
+        self.set_sigma()
 
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
