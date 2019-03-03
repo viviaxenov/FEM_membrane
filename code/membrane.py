@@ -187,7 +187,6 @@ class Grid:
                 for j in range(3):
                     I , J = elem.node_ind[i], elem.node_ind[j]
                     self.K[3*I:3*(I+1), 3*J:3*(J+1)] += K_e[3*i:3*(i+1), 3*j:3*(j+1)]
-        self.K = self.K.tocsc()
 
     def assemble_f(self):
         """"Calculates nodal force vector from elements' distributed force vectors"""
@@ -235,7 +234,23 @@ class Grid:
                     M_ij *= elem.rho*elem.S*elem.h/12.0                             # local submatrix assembled,
 
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
-        self.M = self.M.tocsc()
+
+
+
+
+    def constrain_velocity(self, node_index : int, velocity : np.ndarray):
+        """Applies constraint a_t = velocity = const in poin node_index"""
+        # TODO: verification 
+        self.a_t[3*node_index : 3*(node_index + 1)] = velocity
+        self.K[3*node_index : 3*(node_index + 1), : ] = 0
+        self.M[3*node_index : 3*(node_index + 1), : ] = 0
+        self.M[3*node_index : 3*(node_index + 1), 3*node_index : 3*(node_index + 1)] = np.eye(3)
+        self.f[3*node_index : 3*(node_index + 1)] = np.zeros(3)
+	
+	
+#    def constrain_cord(self, node_index : int):
+#	"""Applies constraint a = 0 in point node_index"""	
+
 
     def get_inv_matrix(self, tau : np.float64):                                     # getting matrix P = (M + \tau^2K)^-1
         self.P = sp.linalg.inv(self.M + self.K*tau**2)
@@ -253,8 +268,8 @@ class Grid:
         self.assemble_K()
         self.assemble_f()
         self.assemble_M()
+
         self.set_sigma()
-        self.a_tt = sp.linalg.spsolve(self.M, -(self.K.dot(self.a) + self.f))            # count acceleration to satisfy equation
 
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
