@@ -328,6 +328,18 @@ class Grid:
 
         self.set_sigma()
 
+    def get_radial_distribution(self, f, center_cord : np.ndarray):
+        """"
+        Counts radial distribution of functions [f_1(u, v), ...] over vertices
+        Args:
+        f - a function that takes u, v (np arrays of shape (3,)) and returns
+        list of [f_1, f_2, f_3 ...]
+        Returns: array [r_i, f_1(u(_i, v_i), ...]"""
+        def dist(i : int):
+            cord = np.array([self.x_0[i], self.y_0[i]])
+            return np.linalg.norm(cord - center_cord, ord=2)
+        res = [[dist(i)] + f(self.a[3*i:3*(i+1)], self.a_t[3*i:3*(i+1)]) for i in range(self.n_nodes)]
+        return np.array(res).T
 
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
                         E : np.float64, nu : np.float64,
