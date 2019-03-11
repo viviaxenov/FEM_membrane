@@ -341,6 +341,13 @@ class Grid:
         res = [[dist(i)] + f(self.a[3*i:3*(i+1)], self.a_t[3*i:3*(i+1)]) for i in range(self.n_nodes)]
         return np.array(res).T
 
+
+    def discard_displacement(self):
+        self.a = np.zeros([3*self.n_nodes])                      # vector of nodal displacements
+        self.a_t = np.zeros([3 * self.n_nodes])                  # vector of nodal velocities
+        self.a_tt = np.zeros([3 * self.n_nodes])                 # vector of nodal accelerations
+
+
 def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
                         E : np.float64, nu : np.float64,
                         h : np.float64, rho : np.float64) -> Grid:

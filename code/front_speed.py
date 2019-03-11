@@ -32,55 +32,53 @@ g.M = g.M.tocsc()
 g.a_tt = sp.linalg.spsolve(g.M, -(g.K.dot(g.a) + g.f))  # count acceleration to satisfy equation
 
 tau = g.estimate_tau()/4
-
 g.set_Newmark_noinverse(0.5, 0.5, tau)
 
 #n_plots = int(input('Number of plots: '))
 n_iter = int(input('Number of iterations: '))
 tp = np.dtype([('t', np.float64),
-               ('r_peak', np.float64),
+               ('r_min', np.float64),
                ('r_inter', np.float64)])
 results = np.array([], dtype=tp)
+
+eps = 3
+
+radial = None
 
 for j in range(n_iter):
     g.iteration_Newmark_noinverse()
 
     radial = g.get_radial_distribution(lambda u, v : [u[2], np.linalg.norm(v, ord=2)], center_cord=strike_pos)
-    r_down = np.min(radial[0, radial[1] <= 0])
-    r_up = np.min(radial[0, np.logical_and(radial[1] >= 0, radial[0] > r_down)])
 
-    cone = radial[:, radial[0] <= (r_down + r_up)/2]
+    w_thr = eps*np.linalg.norm(radial[1], ord=2)/radial[1].shape[0]
+    r_min = np.min(radial[0, np.abs(radial[1]) < w_thr])
+
+
+    cone = radial[:, radial[0] <= r_min]
     p = np.polyfit(cone[0], cone[1], deg=1)
     line = np.poly1d(p)
     intersection = -p[1]/p[0]
-    results = np.append(results, np.array([(tau*(j + 1.0), (r_down + r_up)/2, intersection)], dtype=tp))
 
-fig, axs = plt.subplots(1, 2, sharex=True)
-ax = axs[0]
-ax.plot(radial[0], radial[1], 'bs')
-ax.axvline(r_down, color='blue')
-ax.axvline(r_up, color='blue')
-ax.axvline((r_down + r_up)/2, color='green')
-ax.axvline(intersection, color='red')
-ax.grid(True)
-ax = axs[1]
-ax.plot(radial[0], radial[2], 'rs')
-ax.grid(True)
+    results = np.append(results, np.array([(tau*(j + 1.0), r_min, intersection)], dtype=tp))
+
+plt.plot(radial[0], radial[1], 'b-')
+plt.grid()
 plt.show()
 
-
-p_peak = np.polyfit(results['t'], results['r_peak'], deg=1)
+p_peak = np.polyfit(results['t'], results['r_min'], deg=1)
 p_inter = np.polyfit(results['t'], results['r_inter'], deg=1)
 line_peak = np.poly1d(p_peak)
 line_inter = np.poly1d(p_inter)
 
 fig, ax = plt.subplots(1, 1)
-ax.plot(results['t'], results['r_peak'], 'b^')
-ax.plot(results['t'], results['r_inter'], 'r^')
-ax.plot(results['t'], line_peak(results['t']), 'b--')
+#ax.plot(results['t'], results['r_min'], 'b-')
+#ax.plot(results['t'], line_peak(results['t']), 'b--')
+ax.plot(results['t'], results['r_inter'], 'r-')
 ax.plot(results['t'], line_inter(results['t']), 'r--')
+ax.grid()
 plt.show()
 
+print((p_peak[0] - p_inter[0])/p_peak[0])
 
 
 
