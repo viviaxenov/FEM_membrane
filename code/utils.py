@@ -2,9 +2,9 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
-import code.membrane as mb
+import membrane as mb
 
 def get_node_index(node_cords : np.ndarray, n_x : int):
     return node_cords[0] + (n_x + 1)*node_cords[1]                    #
@@ -41,17 +41,18 @@ def measure_front_speed(g : mb.Grid, n_iter: int, strike_pos: np.ndarray, eps: n
 
         radial = g.get_radial_distribution(lambda u, v : [u[2], np.linalg.norm(v, ord=2)], center_cord=strike_pos)
         w_thr = eps*np.linalg.norm(radial[1], ord=2)/radial[1].shape[0]
+        r_min = np.min(radial[0, np.abs(radial[1]) < w_thr])
 
-        try:
-            r_min = np.min(radial[0, np.abs(radial[1]) < w_thr])
-        except Exception as err:
-            plt.plot(radial[0], radial[1], 'b^')
-            plt.axhline(w_thr)
-            plt.axhline(-w_thr)
-            plt.grid()
-            plt.show()
-            print(f'n_iter = {0:d}\n'.format(j))
-            raise err
+#        try:
+#            r_min = np.min(radial[0, np.abs(radial[1]) < w_thr])
+#        except Exception as err:
+#            plt.plot(radial[0], radial[1], 'b^')
+#            plt.axhline(w_thr)
+#            plt.axhline(-w_thr)
+#            plt.grid()
+#            plt.show()
+#            print(f'n_iter = {0:d}\n'.format(j))
+#            raise err
 
         cone = radial[:, radial[0] <= r_min]
         p = np.polyfit(cone[0], cone[1], deg=1)
