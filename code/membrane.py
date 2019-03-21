@@ -1,10 +1,12 @@
 import numpy as np
 from matplotlib.patches import Polygon
 
+from scipy.spatial import Delaunay
 from scipy import sparse as sp
 import scipy.sparse.linalg
 
-import numba as nb
+import warnings
+import pickle
 
 import pyvtk as pvtk
 # tbc = to be counted/coded/computed/
@@ -52,8 +54,8 @@ class Element:
         D_2 *= D
         return D_1, D_2
 
-    #    def to_string(self):
-    #        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
+    def to_string(self):
+        return f"{self.node_ind}\nE = {self.E:.3f}, nu = {self.nu:.3f}\nh = {self.h:.3f}, rho = {self.rho:.3f}"
 
 
 class Grid:
@@ -124,6 +126,7 @@ class Grid:
         sigmas = np.array(sigmas)
         for i in range(6):
             cd.append(pvtk.Scalars(sigmas[:, i], name=names[i]))
+
         usg = pvtk.UnstructuredGrid(point_coords, triangle=triangles)
         vtk = pvtk.VtkData(usg, pd)
         for e in cd:
@@ -368,6 +371,70 @@ def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
     return res
+
+
+def store_random_grid(path: str, n_x : int, n_y : int, n_inner: int,
+                        E : np.float64, nu : np.float64,
+                        h : np.float64, rho : np.float64, X : np.float64 = 1.0, Y : np.float64 = 1.0,
+                        disp: np.float64 = 0.1):
+    """
+    Creates a square grid of size X * Y. It has n_x + 1 or n_y + 1  vertices on sides and n_vert in total
+    The routine assembles M and K matrices and stores everything in pickle file specified by path
+    """
+
+    x_border = np.linspace(0, X, n_x + 1, endpoint=True)
+    y_border = np.linspace(0, Y, n_y + 1, endpoint=True)
+
+    cords = np.vstack((x_border, np.full_like(x_border, 0.0)))      # lower border
+    cords = np.append(cords, np.vstack((x_border, np.full_like(x_border, Y))), axis=1)    # upper border
+
+    y_border = y_border[1:-1]
+
+    cords = np.append(cords, np.vstack((np.full_like(y_border, 0.0), y_border)), axis=1)   # left border
+    cords = np.append(cords, np.vstack((np.full_like(y_border, X), y_border)), axis=1)    # right border
+
+    x_inner = np.random.normal(X/2, disp, n_inner*2)
+    y_inner = np.random.normal(Y/2, disp, n_inner*2)
+
+    index_x = np.logical_and(x_inner > 0, x_inner < X)
+    index_y = np.logical_and(y_inner > 0, y_inner < Y)
+
+    index = np.logical_and(index_x, index_y)
+    inner_cords = np.vstack((x_inner[index], y_inner[index]))[:, :n_inner]
+
+    if inner_cords.shape[1] < n_inner:
+        warnings.warn("Not enough inner points generated", RuntimeWarning)
+
+    cords = np.append(cords, inner_cords, axis=1)
+
+
+    n_vertex = cords.shape[1]
+    res = Grid(n_vertex)
+    res.x_0 += cords[0]
+    res.y_0 += cords[1]
+
+    triangulation = Delaunay(cords.T)
+
+    for triangle in triangulation.simplices:
+        triangle = list(map(int, triangle))
+        node_ind = (triangle[0], triangle[1], triangle[2])
+        el = Element(node_ind, E, nu, h, rho)
+        res.elements.append(el)
+
+    res.ready()
+    res.K = res.K.tocsc()
+    res.M = res.M.tocsc()
+
+    with open(path, 'wb') as ofile:
+        pickle.dump(res, ofile, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+
+
+
+
+
+
 
 
 #    /|
