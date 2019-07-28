@@ -1,10 +1,10 @@
-import membrane as mb
+import code.membrane as mb
 
 import numpy as np
 
 import time
 
-from utils import *
+from code.utils import *
 import os
 import shutil
 
@@ -15,7 +15,7 @@ h = 0.001
 rho = 900
 magnitude = 1e8
 size = 1.0
-v_mag = 15.0
+v_mag = 25.0
 
 
 n_0 = 3                  # number of squares per side

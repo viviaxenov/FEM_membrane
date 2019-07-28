@@ -1,3 +1,5 @@
+from distutils.command.config import config
+
 import numpy as np
 from matplotlib.patches import Polygon
 
@@ -44,6 +46,7 @@ class Element:
         self.S = 0.0                                        # doubled element area; tbc
         self.sigma = np.zeros([6])                          # stress tensor
 
+
     def get_Dmatrices(self) -> (np.ndarray, np.ndarray):    # see eq. 1.3.2 from desc.
         """Returns elastic moduli matrix for an element"""
         D_2 = np.identity(3)*(1 - 2.0*self.nu)
@@ -74,14 +77,17 @@ class Grid:
             (3*n_nodes, 3*n_nodes), dtype=np.float64)       # global mass matrix
         self.f = np.zeros([3*n_nodes])                      # load vector
 
-        self.P = []                                         # some inverted matrix, may be will be removed if time
-                                                            # integration method changes; now i want to test it so
-                                                            # use the same thing i used in 1D test:
-                                                            # P = (M + \tau**2 K)^(-1)
-        self.tau = 0.0                                      # optimal timestep (that everything converges)
+        self.tau = None                                     # optimal timestep (that everything converges)
         self.beta_1 = 0.0                                   # Newmark algorithm params
         self.beta_2 = 0.0
-        self.A = []
+        self.A = []                                         #
+        self.outer_border_indices = { "top" : [],
+                                      "right" : [],
+                                      "bottom" : [],
+                                      "left" : []
+                                      }
+        self.time_solver_type = None
+        self.iteration = None
 
     def add_elem(self, elem : Element):
         if(max(*elem.node_ind) >= self.n_nodes) or (min(*elem.node_ind) < 0):
@@ -107,6 +113,7 @@ class Grid:
         return polys
 
     def dump_vtk_grid(self, path : str):
+        self.set_sigma()
         point_coords = np.zeros([self.n_nodes, 3])
         point_coords += self.a.reshape([self.n_nodes, 3])
         point_coords[:, 0] += self.x_0
@@ -239,8 +246,6 @@ class Grid:
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
 
 
-
-
     def constrain_velocity(self, node_index : int, velocity : np.ndarray):
         """Applies constraint a_t = velocity = const in poin node_index"""
         # TODO: verification 
@@ -249,14 +254,34 @@ class Grid:
         self.M[3*node_index : 3*(node_index + 1), : ] = 0
         self.M[3*node_index : 3*(node_index + 1), 3*node_index : 3*(node_index + 1)] = np.eye(3)
         self.f[3*node_index : 3*(node_index + 1)] = np.zeros(3)
-	
-	
-#    def constrain_cord(self, node_index : int):
-#	"""Applies constraint a = 0 in point node_index"""	
 
+    def apply_velocity_constraints(self, locs: list, vel: np.ndarray):
+        """Applies constraint da/dt = vel at all points specified in locs array"""
+        sides = ["top", "bottom", "left", "right"]
+        while len(locs) > 0:
+            item = locs.pop()
+            if item == "border":
+                locs += sides
+                continue
+            locs[:] = (it for it in locs if it != item) # remove duplicates of item
 
-    def get_inv_matrix(self, tau : np.float64):                                     # getting matrix P = (M + \tau^2K)^-1
-        self.P = sp.linalg.inv(self.M + self.K*tau**2)
+            if item in sides:
+                for k in self.outer_border_indices[item]:
+                    self.constrain_velocity(k, vel)
+            else:
+                loc = np.array(item)
+                if loc.shape[0] != 2:
+                    raise ValueError(str(item))
+                k = self.get_closest_vertex_index(loc)
+                self.constrain_velocity(k, vel)
+
+    def get_closest_vertex_index(self, loc: np.ndarray):
+        if loc.shape[0] != 2:
+            raise ValueError(f"loc must be a 2-d numpy ndarray [x, y]. Got {loc}")
+        x, y = loc[0], loc[1]
+        dist = (self.x_0 - x)**2 + (self.y_0 - y)**2
+        return np.argmin(dist)
+
 
     def estimate_tau(self):
         """"Estimates time step that tau < diam/c, c ~ sqrt(E/rho) (that everything converges"""
@@ -283,12 +308,6 @@ class Grid:
                                    self.a[3*K:3*(K+1)]])                            # getting displacement vector from global array
             elem.sigma = elem.DB @ a_e
 
-    def iteration(self):
-        self.assemble_f()
-        self.a_t = self.P.dot((self.M.dot(self.a_t) - self.tau * (self.K.dot(self.a) + self.f)))
-        self.a += self.a_t * self.tau
-        self.set_sigma()
-
     def set_Newmark_params(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
         self.tau = tau
         self.beta_1 = beta_1
@@ -306,8 +325,6 @@ class Grid:
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
-
-        self.set_sigma()
 
     def set_Newmark_noinverse(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
         """Sets params for Newmark iteration without preliminary inverting A matrix"""
@@ -329,9 +346,36 @@ class Grid:
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
 
-        self.set_sigma()
 
-    def get_radial_distribution(self, f, center_cord : np.ndarray):
+    def set_Newmark_factorized(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
+        self.tau = tau
+        self.beta_1 = beta_1
+        self.beta_2 = beta_2
+
+        self.A = scipy.sparse.linalg.splu(self.M + 0.5*beta_2*tau**2*self.K)
+
+    def iteration_factorized(self):
+        a_est = self.a + self.tau * self.a_t + 0.5 * (1 - self.beta_2) * self.tau ** 2 * self.a_tt
+        v_est = self.a_t + (1 - self.beta_1) * self.tau * self.a_tt
+
+        a_tt_next = self.A.solve(-self.K.dot(a_est) - self.f)                  # actually we need f_n+1 here
+
+        self.a_tt = a_tt_next
+        self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
+        self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
+
+    def set_time_integration_mode(self, tau: float, tp: str or None="no_inverse"):
+        if tp == "inverse":
+            self.set_Newmark_params(0.5, 0.5, tau)
+            self.iteration = self.iteration_Newmark
+        elif tp == "no_inverse" or tp is None:
+            self.set_Newmark_noinverse(0.5, 0.5, tau)
+            self.iteration = self.iteration_Newmark_noinverse
+        elif tp == "factorized" :
+            self.set_Newmark_factorized(0.5, 0.5, tau)
+            self.iteration = self.iteration_factorized
+
+    def get_radial_distribution(self, f, center_cord: np.ndarray):
         """"
         Counts radial distribution of functions [f_1(u, v), ...] over vertices
         Args:
@@ -343,7 +387,6 @@ class Grid:
             return np.linalg.norm(cord - center_cord, ord=2)
         res = [[dist(i)] + f(self.a[3*i:3*(i+1)], self.a_t[3*i:3*(i+1)]) for i in range(self.n_nodes)]
         return np.array(res).T
-
 
     def discard_displacement(self):
         self.a = np.zeros([3*self.n_nodes])                      # vector of nodal displacements
@@ -368,6 +411,40 @@ def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
             res.x_0[k], res.y_0[k] = dx*j, dy*i
     for i in range(n_y):
         for j in range(n_x):
+            res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
+            res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
+    return res
+
+def generate_perforated_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
+                            step_x: int, step_y: int,
+                          E : np.float64, nu : np.float64,
+                          h : np.float64, rho : np.float64) -> Grid:
+    res = Grid((n_x + 1)*(n_y + 1))
+
+    def index(i, j):
+        return (n_x + 1)*i + j
+
+    dx = X/n_x
+    dy = Y/n_y
+
+    for i in range(n_y + 1):
+        for j in range(n_x + 1):
+            k = index(i, j)
+            res.x_0[k], res.y_0[k] = dx*j, dy*i
+            # adding indices to border array
+            if j == 0:
+                res.outer_border_indices["left"].append(k)
+            if j == n_x:
+                res.outer_border_indices["right"].append(k)
+            if i == 0:
+                res.outer_border_indices["bottom"].append(k)
+            if i == n_y:
+                res.outer_border_indices["top"].append(k)
+
+    for i in range(n_y):
+        for j in range(n_x):
+            if (j + 1)%step_x == 0 and (i + 1)%step_y == 0 and i != n_y - 1 and j != n_x - 1:
+                    continue
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
     return res
@@ -427,13 +504,6 @@ def store_random_grid(path: str, n_x : int, n_y : int, n_inner: int,
 
     with open(path, 'wb') as ofile:
         pickle.dump(res, ofile, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-
-
-
-
-
 
 
 

@@ -1,0 +1,72 @@
+#
+# This is a config file for FEM_membrane test runs
+# By default, the module assembles the grid and stores it in specified directory for further use
+# If "Run" block is specified, it would also do simulations and store visualisation results
+# PS: you can add/delete comments as long as they are on a separate line starting with '#'
+{
+  "pickle_file" : "../pickles/from_config/test",
+  # name of file to store serialized (pickle format) grid
+  "Run" :
+  {
+      "vtk_dir" : "../res/from_config/",
+      # path to store .vtk files (for visualisation)
+      "n_iter" : 1000,
+      # total number of iterations simulated
+      "ipf" : 5,
+      # will produce .vtk outpup every ipf iteration
+      "courant" : 0.75,
+      # must specify one of "courant" or "timestep"
+      # "courant" : c --- sets timestep so that courant number
+      # is c (according to our estimate of wave propagation speed)
+      # "timestep" : dt --- sets timestep dt in the solver
+      "solver" : "factorized"
+      # defines the algorithm used at timestep
+      # "factroized" --- factorizes matrix beforehand (LU decomposition by scipy.sparse.linalg.factorized)
+  },
+  "Geometric" :
+  # geometric properties of grid
+  {
+      "type" : "uniform_rect",
+      # the type of grid generation
+      # uniform rect creates rectangular grid composed of smaller rectangles,
+      # split into triangles by diagonal
+      # TODO: gmesh target
+      "L_x" : 1.0,
+      "L_y" : 1.2,
+      # rectangle sizes in x and y directions respectievely, [m]
+      "n_x" : 25,
+      "n_y" : 30,
+      "perf_step_x" : 5,
+      "perf_step_y" : 6
+      # if both are specified then grid supports perforation
+      # make hole instead of each perf_step_x, y square of grid
+  },
+  "Elastic" :
+  # Elastic properties of material
+  {
+      "type" : "uniform_isotropic",
+      # Type of elastic tensor, if "uniform isotropic" is specified
+      # define only Young modulus and Poisson ratio
+      "E" : 1e6,
+      "nu" : 0.45
+      # TODO: "type" : "full" and load full tensor for anisotropy
+  },
+  "Constraints" :
+  {
+    "Displacement" : ["top", [0.5, 0.5]],
+    # Specify which points are fixed (u, v, w := 0)
+    # Can be "top", "bottom", "left", "right" --- fix respective sides of membrane
+    #         "border"  --- fix all four sides
+    # [x, y]  --- will find the closest grid vertex
+    "Velocity" : [{"v" : [0.0, 0.0, 1.0], "locs" : "bottom"}]
+    # Specifiy which points have fixed velocities
+    # "v" --- 3-array of velocities, "locs" --- array (or single element) of
+    # location specifiers (same as with displacements)
+    # "Velocity" : [{"v" : [0.0, 1.0, 0.0], "locs" : [[0.5, 0.6], "bottom"]},
+    #    {"v" : [0.0, 1.0, 0.0], "locs" : [[0.5, 0.6], "bottom", [0.1, 0.1]]}]
+  },
+  "rho" : 900.0,
+  "h" : 1e-3
+  # density, [kg/m^3]
+  # thickness, [m]
+}
