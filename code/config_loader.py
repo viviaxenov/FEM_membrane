@@ -50,7 +50,7 @@ def check_load_expr(expr_string: str):
     for i, comp in enumerate(expr):
         variables = (comp.atoms(sympy.Symbol))
     if not variables <= expected_variables:
-            return False, f"Component {i + 1:d} must depend only on variables x, y, t. Got {variables}"
+        return False, f"Component {i + 1:d} must depend only on variables x, y, t. Got {variables}"
     return True, expr
 
 
@@ -133,16 +133,32 @@ def run_from_config(config_path: str):
                 print("\"Elastic\" section must be specified. Aborting")
                 exit(-1)
 
-            try:
-                if elastic['type'] != "uniform_isotropic":
-                    print("Only \"uniform_isotropic\" elastic type is supported, got " + str(elastic['type']))
-                    print("Aborting")
+            D = elastic.get('D')
+            if D is not None:
+                try:
+                    D = np.array(D)
+                except ValueError:
+                    print(f"D must be an array of doubles. Got {type(D)}")
                     exit(-1)
-                E = elastic['E']
-                nu = elastic['nu']
-            except KeyError as ke:
-                print(f"An obligatory key \"{ke.args[0]}\" in \"Elastic\" section not found. Aborting")
-                exit(-1)
+                if not D.shape == (6, 6):
+                    print(f"D must be a 6x6 array of doubles. Got {D.shape}")
+                    exit(-1)
+                ut = np.triu_indices(6)
+                D_buf = np.zeros_like(D)
+                D_buf[ut] = D[ut]
+                D = D_buf + D_buf.T - np.diag(np.diag(D))
+                if 'unit' in elastic:
+                    unit = elastic['unit']
+                    if unit == "GPa":
+                        unit = 1e9
+                    elif not isinstance(unit, np.float64):
+                        # TODO: more units
+                        print("\"unit\" must be either a string \"GPa\" or a number")
+                        exit(-1)
+                    D *= unit
+
+            E = elastic.get('E')
+            nu = elastic.get('nu')
 
             if 'Constraints' in loaded:
                 constr = loaded['Constraints']
@@ -235,9 +251,9 @@ def run_from_config(config_path: str):
     else:
         print("Generating grid")
         if perforated:
-            g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, E, nu, h, rho)
+            g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu)
         else:
-            g = mb.generate_uniform_grid(X, Y, n_x, n_y, E, nu, h, rho)
+            g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D)
         print("Done")
 
         g.ready()
@@ -296,6 +312,8 @@ def run_from_config(config_path: str):
 
 if __name__ == "__main__":
     import sys
+
+    sys.argv.append("../configs/anisotropic.json")
     if len(sys.argv) == 2:
         config_path = sys.argv[1]
         run_from_config(config_path)
