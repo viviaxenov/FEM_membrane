@@ -4,16 +4,19 @@ import matplotlib
 
 matplotlib.rcParams['mathtext.fontset'] = 'stix'
 
+dirpath = '../res/norm_speed_most_finer/'
+
+
 
 fig, axs = plt.subplots(3,1, sharex=True)
-fig.suptitle('Распределенная нагрузка $\propto \cos^2(r)$')
+fig.suptitle('Удар с постоянной скоростью по нормали')
 
 for idx, ord in enumerate([1, 2, np.inf]):
     splits = []
     diffs = []
-    for k in range(6):
-        sample_prev = np.append(np.load('./sample_u{0:d}.npy'.format(k)), np.load('./sample_v{0:d}.npy'.format(k)))
-        sample_next = np.append(np.load('./sample_u{0:d}.npy'.format(k + 1)), np.load('./sample_v{0:d}.npy'.format(k + 1)))
+    for k in range(5):
+        sample_prev = np.append(np.load(dirpath + 'sample_u{0:d}.npy'.format(k)), np.load(dirpath + 'sample_v{0:d}.npy'.format(k)))
+        sample_next = np.append(np.load(dirpath + 'sample_u{0:d}.npy'.format(k + 1)), np.load(dirpath + 'sample_v{0:d}.npy'.format(k + 1)))
         diff = np.linalg.norm(sample_next - sample_prev, ord=ord)
         splits += [k]
         diffs += [diff]
@@ -21,7 +24,7 @@ for idx, ord in enumerate([1, 2, np.inf]):
     splits = np.array(splits)
     diffs = np.array(diffs)
 
-    p = np.polyfit(splits[1:], np.log2(diffs)[1:], deg=1)
+    p = np.polyfit(splits[:-2], np.log2(diffs)[:-2], deg=1)
     line = np.poly1d(p)
 
     xs = np.linspace(0, 5, endpoint=True)
@@ -54,7 +57,7 @@ for idx, ord in enumerate([1, 2, np.inf]):
 #    ax.annotate('Omitted from fit', xy=(splits[0], np.log2(diffs[0])), xytext=(splits[0] + 1, np.log(diffs[0]) + 3), arrowprops=dict(arrowstyle='->'))
 
 fig.tight_layout()
-fig.savefig('./plots.png', fmt='png')
+fig.savefig(dirpath + 'plot.png', fmt='png')
 
 plt.show()
 

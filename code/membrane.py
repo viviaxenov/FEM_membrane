@@ -1,4 +1,4 @@
-from distutils.command.config import config
+from typing import List
 
 import numpy as np
 from matplotlib.patches import Polygon
@@ -6,6 +6,8 @@ from matplotlib.patches import Polygon
 from scipy.spatial import Delaunay
 from scipy import sparse as sp
 import scipy.sparse.linalg
+
+import sympy
 
 import warnings
 import pickle
@@ -40,7 +42,7 @@ class Element:
         self.nu = nu                                        # Poisson's ratio
         self.h = h                                          # thickness
         self.rho = rho                                      # density
-        self.b = np.zeros(3, dtype=np.float64)
+        self.b = lambda t: np.zeros(3, dtype=np.float64)
 
         self.DB = np.zeros([6, 9], np.float64)              # matrix connecting stress and nodal displacements; tbc
         self.S = 0.0                                        # doubled element area; tbc
@@ -77,6 +79,7 @@ class Grid:
             (3*n_nodes, 3*n_nodes), dtype=np.float64)       # global mass matrix
         self.f = np.zeros([3*n_nodes])                      # load vector
 
+        self.t = 0.
         self.tau = None                                     # optimal timestep (that everything converges)
         self.beta_1 = 0.0                                   # Newmark algorithm params
         self.beta_2 = 0.0
@@ -86,6 +89,7 @@ class Grid:
                                       "bottom" : [],
                                       "left" : []
                                       }
+        self.constrained_vertices = set()
         self.time_solver_type = None
         self.iteration = None
 
@@ -99,9 +103,8 @@ class Grid:
     def get_elem_midpoint(self, elem_ind : int) -> np.ndarray:
         """Returns middle point of element"""
         indices = np.array(self.elements[elem_ind].node_ind)
-        vertex_coords = np.vstak((self.x_0[indices], self.y_0[indices]))
+        vertex_coords = np.vstack((self.x_0[indices], self.y_0[indices]))
         return vertex_coords.mean(axis=1)
-        
 
     def get_matplotlib_polygons(self) -> [Polygon]:
         polys = []
@@ -204,7 +207,8 @@ class Grid:
         for elem in self.elements:
             for i in range(3):
                 I = elem.node_ind[i]
-                self.f[3*I:3*(I+1)] -= elem.S*elem.h*elem.b/6.0                     # see eq. 1.5.3
+                if I not in self.constrained_vertices:
+                    self.f[3*I:3*(I+1)] -= elem.S*elem.h*elem.b(self.t)/6.0                     # see eq. 1.5.3
 
     def assemble_M(self):
         """"Assembles mass matrix used in dynamic problem"""
@@ -245,15 +249,15 @@ class Grid:
 
                     self.M[3*I:3*(I+1), 3*J:3*(J+1)] += M_ij                        # mapping to global
 
-
     def constrain_velocity(self, node_index : int, velocity : np.ndarray):
         """Applies constraint a_t = velocity = const in poin node_index"""
-        # TODO: verification 
-        self.a_t[3*node_index : 3*(node_index + 1)] = velocity
-        self.K[3*node_index : 3*(node_index + 1), : ] = 0
-        self.M[3*node_index : 3*(node_index + 1), : ] = 0
-        self.M[3*node_index : 3*(node_index + 1), 3*node_index : 3*(node_index + 1)] = np.eye(3)
-        self.f[3*node_index : 3*(node_index + 1)] = np.zeros(3)
+        # TODO: verification
+        self.constrained_vertices.add(node_index)
+        self.a_t[3*node_index: 3*(node_index + 1)] = velocity
+        self.K[3*node_index: 3*(node_index + 1), :] = 0
+        self.M[3*node_index: 3*(node_index + 1), :] = 0
+        self.M[3*node_index: 3*(node_index + 1), 3*node_index: 3*(node_index + 1)] = np.eye(3)
+        self.f[3*node_index: 3*(node_index + 1)] = np.zeros(3)
 
     def apply_velocity_constraints(self, locs: list, vel: np.ndarray):
         """Applies constraint da/dt = vel at all points specified in locs array"""
@@ -325,6 +329,7 @@ class Grid:
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
+        self.t += self.tau
 
     def set_Newmark_noinverse(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
         """Sets params for Newmark iteration without preliminary inverting A matrix"""
@@ -345,6 +350,7 @@ class Grid:
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
+        self.t += self.tau
 
 
     def set_Newmark_factorized(self, beta_1 : np.float64, beta_2 : np.float64, tau : np.float64):
@@ -355,6 +361,7 @@ class Grid:
         self.A = scipy.sparse.linalg.splu(self.M + 0.5*beta_2*tau**2*self.K)
 
     def iteration_factorized(self):
+        self.assemble_f()
         a_est = self.a + self.tau * self.a_t + 0.5 * (1 - self.beta_2) * self.tau ** 2 * self.a_tt
         v_est = self.a_t + (1 - self.beta_1) * self.tau * self.a_tt
 
@@ -363,6 +370,7 @@ class Grid:
         self.a_tt = a_tt_next
         self.a_t = v_est + self.beta_1 * self.tau * a_tt_next
         self.a = a_est + 0.5*self.beta_2*self.tau**2*a_tt_next
+        self.t += self.tau
 
     def set_time_integration_mode(self, tau: float, tp: str or None="no_inverse"):
         if tp == "inverse":
@@ -374,6 +382,17 @@ class Grid:
         elif tp == "factorized" :
             self.set_Newmark_factorized(0.5, 0.5, tau)
             self.iteration = self.iteration_factorized
+
+    def set_loading(self, load_expr: List[sympy.Expr]):
+        if len(load_expr) != 3:
+            raise ValueError(f"Load function must specify 3 components, got {len(load_expr)}")
+        for i, elem in enumerate(self.elements):
+            mp = self.get_elem_midpoint(i)
+            x, y = mp[0], mp[1]
+            load_vec = [comp.subs({'x': x, 'y': y}) for comp in load_expr]
+            func = sympy.lambdify('t', sympy.Matrix(load_vec), [{'ImmutableDenseMatrix': (lambda z: np.array(z)[:, 0])}, 'numpy'])
+            elem.b = func
+
 
     def get_radial_distribution(self, f, center_cord: np.ndarray):
         """"
@@ -393,27 +412,15 @@ class Grid:
         self.a_t = np.zeros([3 * self.n_nodes])                  # vector of nodal velocities
         self.a_tt = np.zeros([3 * self.n_nodes])                 # vector of nodal accelerations
 
+    def serialize(self, pickle_file: str):
+        # discarding lambdas to serialize grid
+        for e in self.elements:
+            e.b = None
+        with open(pickle_file, 'wb') as ofile:
+            pickle.dump(self, ofile, protocol=pickle.HIGHEST_PROTOCOL)
 
-def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
-                        E : np.float64, nu : np.float64,
-                        h : np.float64, rho : np.float64) -> Grid:
-    res = Grid((n_x + 1)*(n_y + 1))
 
-    def index(i, j):
-        return (n_x + 1)*i + j
 
-    dx = X/n_x
-    dy = Y/n_y
-
-    for i in range(n_y + 1):
-        for j in range(n_x + 1):
-            k = index(i, j)
-            res.x_0[k], res.y_0[k] = dx*j, dy*i
-    for i in range(n_y):
-        for j in range(n_x):
-            res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
-            res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
-    return res
 
 def generate_perforated_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
                             step_x: int, step_y: int,
@@ -448,6 +455,12 @@ def generate_perforated_grid(X : np.float64, Y : np.float64, n_x : int, n_y : in
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), E, nu, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), E, nu, h, rho))
     return res
+
+
+def generate_uniform_grid(X : np.float64, Y : np.float64, n_x : int, n_y : int,
+                          E : np.float64, nu : np.float64,
+                          h : np.float64, rho : np.float64) -> Grid:
+    return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, E, h, nu, rho)
 
 
 def store_random_grid(path: str, n_x : int, n_y : int, n_inner: int,
@@ -504,6 +517,7 @@ def store_random_grid(path: str, n_x : int, n_y : int, n_inner: int,
 
     with open(path, 'wb') as ofile:
         pickle.dump(res, ofile, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 
 

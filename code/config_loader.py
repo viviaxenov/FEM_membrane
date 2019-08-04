@@ -1,9 +1,13 @@
 import code.membrane as mb
 import numpy as np
 
+import sympy
+from sympy.parsing import sympy_parser
+
 import json
 import sys, os
 import pickle
+
 
 # checks if an item defines a location (for constraining)
 # e.g. is 2-d array [x, y] or one of "top", "bottom", "left", "right", "border"]
@@ -32,13 +36,31 @@ def is_loc_array(arr):
     return True, i
 
 
-array_of_locs_definition =  " e.g. 2-d arrays [x,y] or one of " \
-                            "\"top\", \"bottom\", \"left\", \"right\", \"border\""
+def check_load_expr(expr_string: str):
+    x, y, t = sympy.symbols("x, y, t")
+    expected_variables = {x, y, t}
+    transformations = sympy_parser.standard_transformations + \
+                      (sympy_parser.implicit_multiplication_application,)
+
+    expr = sympy_parser.parse_expr(expr_string, local_dict={x: 'x',
+                                                            y: 'y',
+                                                            t: 't'})
+    if len(expr) != 3:
+        return False, f"Load function must specify 3 components, got {len(expr)}"
+    for i, comp in enumerate(expr):
+        variables = (comp.atoms(sympy.Symbol))
+    if not variables <= expected_variables:
+            return False, f"Component {i + 1:d} must depend only on variables x, y, t. Got {variables}"
+    return True, expr
 
 
-def run_from_config(config_path : str):
+array_of_locs_definition = " e.g. 2-d arrays [x,y] or one of " \
+                           "\"top\", \"bottom\", \"left\", \"right\", \"border\""
+
+
+def run_from_config(config_path: str):
     loaded = []
-    serialization_needed = False
+    serialization_needed = True
     with open(config_path, mode='r') as infile:
         lines_without_comments = [line for line in infile.readlines() if not line.lstrip().startswith("#")]
         # as json doesn't support comments by standard, we have to strip them manually
@@ -60,8 +82,7 @@ def run_from_config(config_path : str):
             pickle_modified = os.path.getmtime(pickle_file)
             config_modified = os.path.getmtime(config_path)
             if pickle_modified >= config_modified:
-                print("Serialized grid file is up to date. Still want to rewrite? (Y/n)")
-                answ = input()
+                answ = input("Serialized grid file is up to date. Still want to rewrite? (Y/n)")
                 if answ.lower() in ['y', 'yes']:
                     serialization_needed = True
                 else:
@@ -93,6 +114,8 @@ def run_from_config(config_path : str):
                 exit(-1)
 
             perforated = False
+            step_x = None
+            step_y = None
             if ('perf_step_x' in geom) != ('perf_step_y' in geom):
                 print("Both \"perf_step_x\" and \"perf_step_y\" must be specified in order to get perforated grid."
                       " Aborting")
@@ -150,15 +173,16 @@ def run_from_config(config_path : str):
                             if a.shape != (3,):
                                 raise ValueError(f"Velocity must be a 3-d vector, got shape {a.shape}")
                         except ValueError as ve:
-                            print(f"\"Velocity\", item {ind_vel + 1}. Failed to parse. Details: {ve}" )
+                            print(f"\"Velocity\", item {ind_vel + 1}. Failed to parse. Details: {ve}")
                         except KeyError as ke:
-                            print(f"\"Velocity\", item {ind_vel + 1}. Missing key \"{ve.args}\"" )
+                            print(f"\"Velocity\", item {ind_vel + 1}. Missing key \"{ve.args}\"")
                         # if only one loc is specified, convert into array of 1
                         if is_loc(item['locs']):
                             item['locs'] = [item['locs']]
                         res, ind_loc = is_loc_array(item['locs'])
                         if not res:
-                            print(f"\"Velociy\", entry #{ind_vel} must specify an array of locs " + array_of_locs_definition)
+                            print(
+                                f"\"Velociy\", entry #{ind_vel} must specify an array of locs " + array_of_locs_definition)
                             if ind >= 0:
                                 print(f"but item {ind:d} can't be parsed. Got {item['locs'][ind]}")
                             exit(-1)
@@ -166,16 +190,29 @@ def run_from_config(config_path : str):
         if 'Run' in loaded:
             run_params = loaded['Run']
             try:
-                all_fine = ( True
-                        and isinstance(run_params['vtk_dir'], str)
-                        and isinstance(run_params['n_iter'], int)
-                        and ('timestep' in run_params != 'courant' in run_params)
-                             )
+                all_fine = (True
+                            and isinstance(run_params['vtk_dir'], str)
+                            and isinstance(run_params['n_iter'], int)
+                            and ('timestep' in run_params != 'courant' in run_params)
+                            )
             except KeyError as ke:
                 print(f"An obligatory key \"{ke.args[0]}\" in \"Elastic\" section not found. Aborting")
                 exit(-1)
             except Exception:
                 raise
+
+        load_expr = None
+        if "Load" in loaded:
+            try:
+                parsed = check_load_expr(loaded["Load"])
+                if parsed[0]:
+                    load_expr = parsed[1]
+                else:
+                    print(parsed[1])
+                    exit(-1)
+            except Exception as e:
+                print("Error while parsing Load function")
+                exit(-1)
 
     pickle_dir = os.path.dirname(pickle_file)
     try:
@@ -200,27 +237,38 @@ def run_from_config(config_path : str):
         if perforated:
             g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, E, nu, h, rho)
         else:
-            g = mb.generate_uniform_grid(X, Y, n_x, n_y, step_x, step_y, E, nu, h, rho)
+            g = mb.generate_uniform_grid(X, Y, n_x, n_y, E, nu, h, rho)
         print("Done")
 
         g.ready()
-        for item in vel:
-            g.apply_velocity_constraints(item['locs'], item['v'])
-        if len(dsp) > 0:
-            g.apply_velocity_constraints(dsp, np.array([0.]*3))
+        constr = []
+        if 'Constraints' in loaded:
+            constr = loaded['Constraints']
+        if 'Velocity' in constr:
+            vel = constr['Velocity']
+            for item in vel:
+                it = item['locs']
+                loc_array = [it] if is_loc(it) else it
+                g.apply_velocity_constraints(loc_array, item['v'])
+        if 'Displacement' in constr:
+            dsp = constr['Displacement']
+            g.apply_velocity_constraints(dsp, np.array([0.] * 3))
         g.K = g.K.tocsc()
         g.M = g.M.tocsc()
 
-    if serialization_needed:
         print("Serializing grid")
-        with open(pickle_file, 'wb') as ofile:
-            pickle.dump(g, ofile, protocol=pickle.HIGHEST_PROTOCOL)
+        g.serialize(pickle_file)
         print(f"Serialized grid stored at {pickle_file}")
 
     if run_needed:
+        if load_expr is not None:
+            g.set_loading(load_expr)
+        else:
+            for e in g.elements:
+                e.b = lambda t: np.zeros(3)
         new_timestep = 0.
         if "courant" in run_params:
-            new_timestep = run_params['courant']*g.estimate_tau()
+            new_timestep = run_params['courant'] * g.estimate_tau()
         else:
             new_timestep = run_params['timestep']
 
@@ -243,13 +291,17 @@ def run_from_config(config_path : str):
             if (i + 1) % ipf == 0:
                 g.dump_vtk_grid(vtk_dir + f"f{(i + 1)//ipf:d}")
         print("Done")
+        print(f".vtk dumps stored at {vtk_dir}")
 
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) == 2:
-        config_path = sys.argv[1]
-        run_from_config(config_path)
-    else:
-        print(f"USAGE: {os.path.basename(sys.argv[0])} config_file.json")
-        exit()
+
+    run_from_config("../configs/point_load.json")
+
+#    if len(sys.argv) == 2:
+#        config_path = sys.argv[1]
+#        run_from_config(config_path)
+#    else:
+#        print(f"USAGE: {os.path.basename(sys.argv[0])} config_file.json")
+#        exit()
