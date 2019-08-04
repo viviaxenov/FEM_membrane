@@ -296,12 +296,9 @@ def run_from_config(config_path: str):
 
 if __name__ == "__main__":
     import sys
-
-    run_from_config("../configs/point_load.json")
-
-#    if len(sys.argv) == 2:
-#        config_path = sys.argv[1]
-#        run_from_config(config_path)
-#    else:
-#        print(f"USAGE: {os.path.basename(sys.argv[0])} config_file.json")
-#        exit()
+    if len(sys.argv) == 2:
+        config_path = sys.argv[1]
+        run_from_config(config_path)
+    else:
+        print(f"USAGE: {os.path.basename(sys.argv[0])} config_file.json")
+        exit()
