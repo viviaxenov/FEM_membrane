@@ -14,6 +14,7 @@ import argparse
 from typing import Tuple, List
 from scipy.sparse.linalg.eigen.arpack.arpack import ArpackNoConvergence
 
+
 def initialize_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="FEM-membrane --- modelling of membrane deformation and eigenvalue problem",
@@ -385,15 +386,18 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             print(str(e))
             eigvals = e.eigenvalues
             eigvecs = e.eigenvectors
-        freqs = eigvals.imag / 2. / np.pi
+        freqs = np.imag(eigvals) / 2. / np.pi
         print("damped frequiences:", freqs)
-        damping = eigvals.real
+        damping = np.real(eigvals).astype(np.float64)
+        print(damping.dtype)
         return {"eigenvalues": eigvals, "frequencies": freqs, "damping": damping}, eigvecs
 
 
 if __name__ == "__main__":
     parser = initialize_argparser()
-    parsed_args = parser.parse_args("eigen ../configs/oscillation_test.json ../results/ --k=10 --which=SM".split())
+#    parsed_args = parser.parse_args(
+#        "eigen ../configs/oscillation_test.json ../results/ --k=20 --tol=1. --which=SM".split())
+    parsed_args = parser.parse_args()
 
     mode = parsed_args.mode
 
@@ -433,4 +437,4 @@ if __name__ == "__main__":
         arr = np.array([res_dict[key] for key in res_dict.keys()]).T
         names = ", ".join(res_dict.keys())
         file = os.path.join(res_dir, "res.csv")
-        np.savetxt(file, arr, delimiter=', ', header=names)
+        np.savetxt(file, arr, delimiter=', ', header=names, fmt=['(%+1.3e, %+1.3e1j)', '%1.5e+%.1ej', '%1.5e+%.1ej'])
