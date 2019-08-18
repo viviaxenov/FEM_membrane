@@ -4,56 +4,63 @@
 # If "Run" block is specified, it would also do simulations and store visualisation results
 # PS: you can add/delete comments as long as they are on a separate line starting with '#'
 {
-  "pickle_file" : "../pickles/from_config/point",
-  # name of file to store serialized (pickle format) grid
-  "Geometric" :
-  # geometric properties of grid
-  {
-      "type" : "uniform_rect",
-      # the type of grid generation
-      # uniform rect creates rectangular grid composed of smaller rectangles,
-      # split into triangles by diagonal
-      # TODO: gmesh target
-      "L_x" : 1.0,
-      "L_y" : 1.0,
-      # rectangle sizes in x and y directions respectievely, [m]
-      "n_x" : 25,
-      "n_y" : 25
-      #"perf_step_x" : 5,
-      #"perf_step_y" : 6
-      # if both are specified then grid supports perforation
-      # make hole instead of each perf_step_x, y square of grid
-  },
-  "Elastic" :
-  # Elastic properties of material
-  {
-      "E" : 1e6,
-      "nu" : 0.45
-	  # if "D" is specified, fill in all 21 elastic constants
-	  # you may fill only the upper triangle of the matrix
-	  # lower will be discarded anyway
-		#"D" :  [[151.0,  48.0,  26.0,   9.6,   0.0,   0.0],
-		#		[0    , 101.0,  61.7,  -0.3,   0.0,   0.0],
-		#		[0    ,     0, 158.2,  -8.0,   0.0,   0.0],
-		#		[0    ,     0,     0,   33.5,  0.0,   0.0],
-		#		[0    ,     0,     0,      0, 37.0,  -5.6],
-		#		[0    ,     0,     0,      0,    0,  21.4]],
-		#"unit": "GPa"	
-  },  
-  "Constraints" :
-  {
-    "Displacement" : ["border"]
-    # Specify which points are fixed (u, v, w := 0)
-    # Can be "top", "bottom", "left", "right" --- fix respective sides of membrane
-    #         "border"  --- fix all four sides
-    # [x, y]  --- will find the closest grid vertex
-    #"Velocity" : [{"v" : [0.0, 0.0, 100.0], "locs" : "bottom"}]
-    # Specifiy which points have fixed velocities
-    # "v" --- 3-array of velocities, "locs" --- array (or single element) of
-    # location specifiers (same as with displacements)
-    # "Velocity" : [{"v" : [0.0, 0.0, 1.0], "locs" : [[0.5, 0.6], "bottom"]},
-    #   {"v" : [0.0, 1.0, 0.0], "locs" : [[0.5, 0.6], "bottom", [0.1, 0.1]]}]
-  },
+	"Grid":
+	{
+	"pickle_file" : "../pickles/from_config/point",
+	"rho" : 900.0,
+	# density, [kg/m^3]
+	"h" : 1e-3
+	# thickness, [m]
+	# name of file to store serialized (pickle format) grid
+	"Geometric" :
+	# geometric properties of grid
+	{
+		"type" : "uniform_rect",
+		# the type of grid generation
+		# uniform rect creates rectangular grid composed of smaller rectangles,
+		# split into triangles by diagonal
+		# TODO: gmesh target
+		"L_x" : 1.0,
+		"L_y" : 1.0,
+		# rectangle sizes in x and y directions respectievely, [m]
+		"n_x" : 25,
+		"n_y" : 25
+		#"perf_step_x" : 5,
+		#"perf_step_y" : 6
+		# if both are specified then grid supports perforation
+		# make hole instead of each perf_step_x, y square of grid
+	},
+	"Elastic" :
+	# Elastic properties of material
+	{
+		"E" : 1e11,
+		"nu" : 0.45
+		# if "D" is specified, fill in all 21 elastic constants
+		# you may fill only the upper triangle of the matrix
+		# lower will be discarded anyway
+			#"D" :  [[151.0,  48.0,  26.0,   9.6,   0.0,   0.0],
+			#		[0    , 101.0,  61.7,  -0.3,   0.0,   0.0],
+			#		[0    ,     0, 158.2,  -8.0,   0.0,   0.0],
+			#		[0    ,     0,     0,   33.5,  0.0,   0.0],
+			#		[0    ,     0,     0,      0, 37.0,  -5.6],
+			#		[0    ,     0,     0,      0,    0,  21.4]],
+			#"unit": "GPa"	
+	},  
+	"Constraints" :
+	{
+		"Displacement" : ["border"]
+		# Specify which points are fixed (u, v, w := 0)
+		# Can be "top", "bottom", "left", "right" --- fix respective sides of membrane
+		#         "border"  --- fix all four sides
+		# [x, y]  --- will find the closest grid vertex
+		#"Velocity" : [{"v" : [0.0, 0.0, 100.0], "locs" : "bottom"}]
+		# Specifiy which points have fixed velocities
+		# "v" --- 3-array of velocities, "locs" --- array (or single element) of
+		# location specifiers (same as with displacements)
+		# "Velocity" : [{"v" : [0.0, 0.0, 1.0], "locs" : [[0.5, 0.6], "bottom"]},
+		#   {"v" : [0.0, 1.0, 0.0], "locs" : [[0.5, 0.6], "bottom", [0.1, 0.1]]}]
+	}
+	},
    "Run" :
   {
       "vtk_dir" : "../res/from_config/point/",
@@ -61,6 +68,7 @@
       "n_iter" : 600,
       # total number of iterations simulated
       "ipf" : 5,
+	  "Load": "[0., 0., where(sqrt((x - 0.5)**2 + (y - 0.5)**2) < 1e-2, 1e8, 0.)]",
       # will produce .vtk outpup every ipf iteration
       "courant" : 0.5,
       # must specify one of "courant" or "timestep"
@@ -71,9 +79,4 @@
       # defines the algorithm used at timestep
       # "factroized" --- factorizes matrix beforehand (LU decomposition by scipy.sparse.linalg.factorized)
   },
-  "Load": "[0., 0., where(sqrt((x - 0.5)**2 + (y - 0.5)**2) < 1e-2, 1e8, 0.)]",
-  "rho" : 900.0,
-  # density, [kg/m^3]
-  "h" : 1e-3
-  # thickness, [m]
 }

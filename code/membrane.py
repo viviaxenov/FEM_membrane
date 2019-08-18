@@ -67,6 +67,7 @@ class Element:
 
 class Grid:
     """2D membrane in 3D space model"""
+    supported_solvers = ["factorized", "no_inverse", "inverse"]
 
     def __init__(self, n_nodes: int):
         self.n_nodes = n_nodes  # number of nodes
@@ -78,6 +79,7 @@ class Grid:
         self.elements = []  # list of elements, will be filled later
         self.K = sp.dok_matrix(
             (3 * n_nodes, 3 * n_nodes), dtype=np.float64)  # global stiffness matrix
+        self.C = 0.  # damping matrix
         self.M = sp.dok_matrix(
             (3 * n_nodes, 3 * n_nodes), dtype=np.float64)  # global mass matrix
         self.f = np.zeros([3 * n_nodes])  # load vector
@@ -86,6 +88,7 @@ class Grid:
         self.tau = None  # optimal timestep (that everything converges)
         self.beta_1 = 0.0  # Newmark algorithm params
         self.beta_2 = 0.0
+        self.damping = None
         self.A = []  # auxiliary matrix used in time integration
         self.outer_border_indices = {"top": [],
                                      "right": [],
@@ -249,6 +252,8 @@ class Grid:
         self.constrained_vertices.add(node_index)
         self.a_t[3 * node_index: 3 * (node_index + 1)] = velocity
         self.K[3 * node_index: 3 * (node_index + 1), :] = 0
+        if self.damping is not None:
+            self.C[3 * node_index: 3 * (node_index + 1), :] = 0
         self.M[3 * node_index: 3 * (node_index + 1), :] = 0
         self.M[3 * node_index: 3 * (node_index + 1), 3 * node_index: 3 * (node_index + 1)] = np.eye(3)
         self.f[3 * node_index: 3 * (node_index + 1)] = np.zeros(3)
@@ -282,8 +287,9 @@ class Grid:
 
     def estimate_tau(self):
         """"Estimates time step that tau < diam/c, c ~ sqrt(E/rho) (that everything converges"""
+
         def tau(e: Element):
-            E_eff = np.diag(e.D)[:3].max() # TODO: find actual formula for wave speed
+            E_eff = np.diag(e.D)[:3].max()  # TODO: find actual formula for wave speed
             return np.sqrt(e.S * e.rho / E_eff)  # this may be wrong in counting both diameter
 
         tau_max = 0.5 * min([tau(e) for e in self.elements])  # and c, but i want to test the thing already
@@ -296,6 +302,10 @@ class Grid:
         self.assemble_f()
         self.assemble_M()
         self.set_sigma()
+
+        if self.damping is not None:
+            self.C = self.damping * self.M
+            # TODO this is ad hoc, should consider more general case of damping
 
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
@@ -366,15 +376,17 @@ class Grid:
         self.t += self.tau
 
     def set_time_integration_mode(self, tau: float, tp: str or None = "no_inverse"):
-        if tp is None or tp == "no_inverse":
+        if self.damping is not None:
+            raise NotImplementedError("Time integration with damping is not implemented")
+        if tp is None or tp == "factorized":
+            self.set_Newmark_factorized(0.5, 0.5, tau)
+            self.iteration = self.iteration_factorized
+        elif tp == "no_inverse":
             self.set_Newmark_noinverse(0.5, 0.5, tau)
             self.iteration = self.iteration_Newmark_noinverse
         elif tp == "inverse":
             self.set_Newmark_params(0.5, 0.5, tau)
             self.iteration = self.iteration_Newmark
-        elif tp == "factorized":
-            self.set_Newmark_factorized(0.5, 0.5, tau)
-            self.iteration = self.iteration_factorized
 
     def set_loading(self, load_expr: List[sympy.Expr]):
         if len(load_expr) != 3:
@@ -409,8 +421,6 @@ class Grid:
 
     def serialize(self, pickle_file: str):
         # discarding lambdas to serialize grid
-        for e in self.elements:
-            e.b = None
         with open(pickle_file, 'wb') as ofile:
             pickle.dump(self, ofile, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -431,11 +441,13 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                              step_x: int, step_y: int,
                              h: np.float64, rho: np.float64,
                              D: np.ndarray = None,
-                             E: np.float64 = None, nu: np.float64 = None) -> Grid:
+                             E: np.float64 = None, nu: np.float64 = None, damping: np.float64 = None) -> Grid:
+    if damping == 0:
+        damping = None
+
     if D is None and (E is None or nu is None):
         raise ValueError("Either a full elastic tensor D or elastic constants (E, nu)"
                          "must be specified")
-
     if D is None:
         D = get_isotropic_elastic_tensor(E, nu)
 
@@ -467,13 +479,14 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                 continue
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), D, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), D, h, rho))
+    res.damping = damping
     return res
 
 
 def generate_uniform_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                           h: np.float64, rho: np.float64,
-                          D=None, E=None, nu=None) -> Grid:
-    return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, h, rho, D=D, E=E, nu=nu)
+                          D=None, E=None, nu=None, damping=None) -> Grid:
+    return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, h, rho, D=D, E=E, nu=nu, damping=damping)
 
 
 def store_random_grid(path: str, n_x: int, n_y: int, n_inner: int,
