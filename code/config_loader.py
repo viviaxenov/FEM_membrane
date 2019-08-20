@@ -37,20 +37,10 @@ def initialize_argparser() -> argparse.ArgumentParser:
     parser_eigen.add_argument("res_dir", metavar="results_directory", type=str, nargs='?',
                               help="Directory to store results")
     parser_eigen.add_argument("--k", type=int, default=1, help="Number of eigenvalues to find")
-    parser_eigen.add_argument("--which", choices=['LM', 'SM'], default='SM',
+    parser_eigen.add_argument("--which", choices=['LM', 'SM', 'LI', 'SI', 'LR', 'SR'], default='SM',
                               help="Look for either eigenvalues with small (\'SM\') or large magnitude")
     parser_eigen.add_argument("--tol", type=np.float64, default=0.,
                               help="Precision for solver. Default 0 is machine precision")
-    #    group = parser.add_mutually_exclusive_group(required=True)
-    #    group.add_argument("-g", type=str, dest='grid_config_file', metavar="config.json",
-    #                       help="Generate grid from config stored in config file")
-    #    group.add_argument("-r", type=str, dest='run_config_file', metavar="config.json",
-    #                       help="Generate or unpack serialized grid specified by config file, then perform run")
-    #    group.add_argument("-e", nargs="+", dest="eigen_problem", metavar=("config.json", "additional_args"),
-    #                       help="Solve eigenvalue problem for grid specified in config_file.json."
-    #                            " Additional args are passed directly to scipy.eigsh")
-    #    group.add_argument("-u", nargs="+", dest="unpack", metavar=("pickle_file", "unpacked_config.json"),
-    #                       help="Unpack *.json config from pickle file with grid")
     return parser
 
 
@@ -191,13 +181,11 @@ def check_grid_dict(grid_dict: dict):
 
         if "Constraints" in grid_dict:
             check_constraints_dict(grid_dict["Constraints"])
-
         if "damping" in grid_dict:
             damping = grid_dict["damping"]
-            if damping is not None and not isinstance(damping, np.float64):
-                raise ValueError("\"damping\" must specify a number")
-            if damping is not None and damping < 0.:
-                raise ValueError("Damping must be positive or zero")
+            keyset = set(damping.keys())
+            if not keyset <= {"alpha", "beta"} or len(keyset) == 0:
+                raise ValueError("\"Damping\" must specify either one or both keys from \"alpha\", \"beta\"")
     except KeyError as ke:
         print(f"An obligatory key \"{ke.args[0]}\" not found. Aborting")
         raise ke
@@ -224,9 +212,9 @@ def generate_grid_from_dict(grid_dict: dict):
     if perforated:
         step_x = geom['perf_step_x']
         step_y = geom['perf_step_y']
-        g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu, damping=damping)
+        g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu)
     else:
-        g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D, damping=damping)
+        g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D)
     g.ready()
     constr = grid_dict["Constraints"] if "Constraints" in grid_dict else {}
     vel = constr['Velocity'] if "Velocity" in constr else []
@@ -309,11 +297,15 @@ def grid_routine(config_dict: dict):
     else:
         old_grid_dict = metadata["Grid"]
 
+    damping = grid_dict.pop("damping")
+    old_grid_dict.pop("damping")  # I want to compute damping matrix on every run as I'm changing those params manually
     if grid_dict == old_grid_dict:
         answ: str = input("Grid file is up to date. Still want to rewrite? (Y/n)")
         rewrite_needed = True if answ.lower() in ["y", "yes"] else False
     else:
         rewrite_needed = True
+    if damping is not None:
+        grid_dict["damping"] = damping
     if rewrite_needed:
         g = generate_grid_from_dict(grid_dict)
         serialize_grid_and_metadata(pickle_path, g, config_dict)
@@ -332,6 +324,9 @@ def run_routine(config_dict: dict, grid: mb.Grid):
             e.b = lambda t: np.zeros(3)  # TODO: fix this bullshit
     timestep = run_dict['courant'] * grid.estimate_tau() if 'courant' in run_dict else run_dict["timestep"]
     grid.set_time_integration_mode(timestep, run_dict.get("solver"))
+    if "damping" in config_dict["Grid"]:
+        damping = run_dict["damping"]
+        grid.set_rayleigh_damping(**damping)
     n_iter = run_dict['n_iter']
     ipf = run_dict['ipf']
     vtk_dir = run_dict['vtk_dir']
@@ -357,10 +352,8 @@ def get_config_dict(config_path):
 
 def eigen_routine(grid: mb.Grid, args_dict: dict):
     if grid.damping is None:
-        eigen_solver = scipy.sparse.linalg.eigsh
         M_eff = scipy.sparse.csc_matrix(grid.M)
         A_eff = scipy.sparse.csc_matrix(grid.K)
-
         try:
             eigvals, eigvecs = scipy.sparse.linalg.eigsh(A_eff, M=M_eff, **args_dict)  # symmeric matrices
         except scipy.sparse.linalg.ArpackNoConvergence as e:
@@ -381,7 +374,7 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             (scipy.sparse.hstack((grid.C, grid.K)),
              scipy.sparse.hstack((grid.M, zero))), format="csc")
         try:
-            eigvals, eigvecs = scipy.sparse.linalg.eigs(A_eff, M=M_eff, **args_dict)  # symmeric matrices
+            eigvals, eigvecs = scipy.sparse.linalg.eigs(A_eff, M=M_eff, **args_dict)
         except scipy.sparse.linalg.ArpackNoConvergence as e:
             print(str(e))
             eigvals = e.eigenvalues
@@ -395,9 +388,8 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
 
 if __name__ == "__main__":
     parser = initialize_argparser()
-#    parsed_args = parser.parse_args(
-#        "eigen ../configs/oscillation_test.json ../results/ --k=20 --tol=1. --which=SM".split())
-    parsed_args = parser.parse_args()
+    parsed_args = parser.parse_args(
+        "eigen ../configs/oscillation_test.json ../results/ --k=20 --tol=1. --which=SM".split())
 
     mode = parsed_args.mode
 
@@ -422,6 +414,9 @@ if __name__ == "__main__":
         res_dir = args_dict.pop("res_dir")
         config_dict = get_config_dict(config_file)
         grid = grid_routine(config_dict)
+        if "damping" in config_dict["Grid"]:
+            damping = config_dict["Grid"]["damping"]
+            grid.set_rayleigh_damping(**damping)
         res_dict, eigvecs = eigen_routine(grid, args_dict)
 
         name, dir = os.path.split(config_file)
@@ -437,4 +432,5 @@ if __name__ == "__main__":
         arr = np.array([res_dict[key] for key in res_dict.keys()]).T
         names = ", ".join(res_dict.keys())
         file = os.path.join(res_dir, "res.csv")
-        np.savetxt(file, arr, delimiter=', ', header=names, fmt=['(%+1.3e, %+1.3e1j)', '%1.5e+%.1ej', '%1.5e+%.1ej'])
+        np.savetxt(file, arr, delimiter=', ',
+                   header=names)  # , fmt=['(%+1.3e, %+1.3e1j)', '%1.5e+%.1ej', '%1.5e+%.1ej'])

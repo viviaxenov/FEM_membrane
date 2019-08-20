@@ -303,10 +303,6 @@ class Grid:
         self.assemble_M()
         self.set_sigma()
 
-        if self.damping is not None:
-            self.C = self.damping * self.M
-            # TODO this is ad hoc, should consider more general case of damping
-
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
         for elem in self.elements:
@@ -399,6 +395,13 @@ class Grid:
                                   [{'ImmutableDenseMatrix': (lambda z: np.array(z)[:, 0])}, 'numpy'])
             elem.b = func
 
+    def set_rayleigh_damping(self, alpha: np.float64 = 0., beta: np.float64 = 0):
+        """"Sets damping matrix C = alpha*M + beta*K"""
+        alpha = 0. if alpha is None else alpha
+        beta = 0. if beta is None else beta
+        self.damping = {"alpha": alpha, "beta": beta}
+        self.C = alpha * self.M + beta * self.K
+
     def get_radial_distribution(self, f, center_cord: np.ndarray):
         """"
         Counts radial distribution of functions [f_1(u, v), ...] over vertices
@@ -441,10 +444,7 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                              step_x: int, step_y: int,
                              h: np.float64, rho: np.float64,
                              D: np.ndarray = None,
-                             E: np.float64 = None, nu: np.float64 = None, damping: np.float64 = None) -> Grid:
-    if damping == 0:
-        damping = None
-
+                             E: np.float64 = None, nu: np.float64 = None) -> Grid:
     if D is None and (E is None or nu is None):
         raise ValueError("Either a full elastic tensor D or elastic constants (E, nu)"
                          "must be specified")
@@ -479,14 +479,14 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                 continue
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), D, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), D, h, rho))
-    res.damping = damping
+    res.damping = None # TODO review architecture here
     return res
 
 
 def generate_uniform_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                           h: np.float64, rho: np.float64,
                           D=None, E=None, nu=None, damping=None) -> Grid:
-    return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, h, rho, D=D, E=E, nu=nu, damping=damping)
+    return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, h, rho, D=D, E=E, nu=nu)
 
 
 def store_random_grid(path: str, n_x: int, n_y: int, n_inner: int,
