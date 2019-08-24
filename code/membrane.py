@@ -479,7 +479,7 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                 continue
             res.elements.append(Element((index(i, j), index(i, j + 1), index(i + 1, j + 1)), D, h, rho))
             res.elements.append(Element((index(i, j), index(i + 1, j + 1), index(i + 1, j)), D, h, rho))
-    res.damping = None # TODO review architecture here
+    res.damping = None  # TODO review architecture here
     return res
 
 

@@ -2,6 +2,7 @@ import code.membrane as mb
 import scipy.sparse
 from scipy.sparse.linalg import eigsh
 import numpy as np
+import pandas as pd
 
 import sympy
 from sympy.parsing import sympy_parser
@@ -256,6 +257,9 @@ def serialize_grid_and_metadata(pickle_path, g: mb.Grid, metadata: dict):
     if g.time_solver_type == "factorized":
         g.A = None
     data = {"grid": g, "metadata": metadata}  # packing
+    dirname, basename = os.path.split(pickle_path)
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
     with open(pickle_path, "wb") as ofile:
         pickle.dump(data, ofile, pickle.HIGHEST_PROTOCOL)
 
@@ -297,8 +301,9 @@ def grid_routine(config_dict: dict):
     else:
         old_grid_dict = metadata["Grid"]
 
-    damping = grid_dict.pop("damping")
-    old_grid_dict.pop("damping")  # I want to compute damping matrix on every run as I'm changing those params manually
+    damping = grid_dict.pop("damping", None)
+    old_grid_dict.pop("damping",
+                      None)  # I want to compute damping matrix on every run as I'm changing those params manually
     if grid_dict == old_grid_dict:
         answ: str = input("Grid file is up to date. Still want to rewrite? (Y/n)")
         rewrite_needed = True if answ.lower() in ["y", "yes"] else False
@@ -314,6 +319,43 @@ def grid_routine(config_dict: dict):
         return old_grid
 
 
+def provide_run_metadata(grid: mb.Grid, config_dict: dict):
+    tau = grid.tau
+    try:
+        n_x = config_dict["Grid"]["Geometric"]["n_x"]
+        n_y = config_dict["Grid"]["Geometric"]["n_x"]
+    except KeyError as ke:
+        raise NotImplementedError("Waring: metadata generation in text format is availiable only for regular grids")
+    dmp_dict = {"Thickness [mm]": [1000. * config_dict["Grid"]['h']],
+                "Density [$\\frac{g}{cm^3}$]": [config_dict["Grid"]["rho"] / 1000.],
+                "Nodes (x)": [n_x],
+                "Nodes (y)": [n_y],
+                "Perforation frequency (x)": config_dict["Grid"]["Geometric"].get('perf_step_x'),
+                "Perforation frequency (y)": config_dict["Grid"]["Geometric"].get('perf_step_y'),
+                "Time step [s]": [tau],
+                "Iterations": config_dict["Run"].get("n_iter"),
+                "Iter. per frame": config_dict["Run"].get("ipf"),
+                }
+    if "D" not in config_dict["Grid"]["Elastic"]:
+        dmp_dict["$E$ [GPa]"] = config_dict["Grid"]["Elastic"]["E"] / 1e9
+        dmp_dict["$\\nu$"] = config_dict["Grid"]["Elastic"]["nu"]
+    else:
+        inds = [(i, j) for i in range(0, 6) for j in range(0, 6) if i <= j]
+        unit = config_dict["Grid"]["Elastic"].get("unit")
+        for idx in inds:
+            val = config_dict["Grid"]["Elastic"]["D"][idx[0]][idx[1]]
+            if val == 0.:
+                continue
+            key = f"$c_{{{idx[0] + 1}{idx[1] + 1}}}$"
+            if unit == "GPa":
+                key += "[GPa]"
+            dmp_dict[key] = [val]
+    data = pd.DataFrame.from_dict(dmp_dict)
+    data_path = os.path.join(config_dict["Run"]["vtk_dir"], "details.tex")
+    with open(data_path, "w") as ofile:
+        data.T.to_latex(ofile, escape=False)
+
+
 def run_routine(config_dict: dict, grid: mb.Grid):
     run_dict = config_dict["Run"]
     if "Load" in run_dict:
@@ -324,6 +366,12 @@ def run_routine(config_dict: dict, grid: mb.Grid):
             e.b = lambda t: np.zeros(3)  # TODO: fix this bullshit
     timestep = run_dict['courant'] * grid.estimate_tau() if 'courant' in run_dict else run_dict["timestep"]
     grid.set_time_integration_mode(timestep, run_dict.get("solver"))
+
+    try:
+        provide_run_metadata(grid, config_dict)
+    except NotImplementedError as e:
+        print(str(e))
+
     if "damping" in config_dict["Grid"]:
         damping = run_dict["damping"]
         grid.set_rayleigh_damping(**damping)
@@ -331,12 +379,14 @@ def run_routine(config_dict: dict, grid: mb.Grid):
     ipf = run_dict['ipf']
     vtk_dir = run_dict['vtk_dir']
 
-    grid.dump_vtk_grid(vtk_dir + "f0")
+    if not os.path.exists(vtk_dir):
+        os.makedirs(vtk_dir)
+    grid.dump_vtk_grid(os.path.join(vtk_dir, "f0"))
 
     for i in range(n_iter):
         grid.iteration()
         if (i + 1) % ipf == 0:
-            grid.dump_vtk_grid(vtk_dir + f"f{(i + 1)//ipf:d}")
+            grid.dump_vtk_grid(os.path.join(vtk_dir, f"f{(i + 1)//ipf:d}"))
 
 
 def get_config_dict(config_path):
@@ -389,7 +439,7 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
 if __name__ == "__main__":
     parser = initialize_argparser()
     parsed_args = parser.parse_args(
-        "eigen ../configs/oscillation_test.json ../results/ --k=20 --tol=1. --which=SM".split())
+        "run ../configs/nsk/anisotropic.json".split())
 
     mode = parsed_args.mode
 
