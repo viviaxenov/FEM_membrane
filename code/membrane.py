@@ -175,8 +175,8 @@ class Grid:
                             [0, gamma, 0],
                             [0, 0, 0]])
             B_2 = np.array([[gamma, beta, 0],
-                            [0, 0, beta],
-                            [0, 0, gamma]])  # assuming DB was already counted
+                            [0, 0, gamma],
+                            [0, 0, beta]])  # assuming DB was already counted
             B[:, 3 * i:3 * (i + 1)] = np.row_stack((B_1, B_2))
         return B
 
