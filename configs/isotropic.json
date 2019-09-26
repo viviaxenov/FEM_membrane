@@ -1,0 +1,25 @@
+{
+"Grid":
+{
+	"pickle_file" : "../pickles/from_config/isotropic",
+	"rho" : 900.0,
+	"h" : 1e-3,
+	"Geometric" :
+	{
+		"type" : "uniform_rect",
+		"L_x" : 1.0,
+		"L_y" : 2.0,
+		"n_x" : 20,
+		"n_y" : 40
+	},
+	"Elastic" :
+	{
+		"E" : 1e6,
+		"nu" : 0.45
+	},  
+	"Constraints" :
+	{
+		"Displacement" : ["border"]		
+	}
+}
+}

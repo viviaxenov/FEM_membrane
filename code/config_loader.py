@@ -8,11 +8,12 @@ import sympy
 from sympy.parsing import sympy_parser
 
 import json
-import sys, os
+import sys
+import os
 import pickle
 import argparse
 
-from typing import Tuple, List
+from typing import Tuple, List, Union
 from scipy.sparse.linalg.eigen.arpack.arpack import ArpackNoConvergence
 
 
@@ -396,8 +397,9 @@ def get_config_dict(config_path):
     try:
         loaded: dict = json.loads(''.join(lines_without_comments), parse_float=np.float64)
         return loaded
-    except json.JSONDecodeError as parse_error:
-        raise ValueError("Failed to parse config file. Details: " + parse_error.msg)
+    except (json.JSONDecodeError, json.decoder.JSONDecodeError) as parse_error:
+        raise ValueError(f"Failed to parse config file.\n"
+                         f"In line {parse_error.lineno} symbol {parse_error.colno}: {parse_error.msg}")
 
 
 def eigen_routine(grid: mb.Grid, args_dict: dict):
@@ -411,7 +413,7 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             eigvals = e.eigenvalues
             eigvecs = e.eigenvectors
         freqs = np.sqrt(np.abs(eigvals)) / 2. / np.pi
-        print("undamped frequiences:", freqs)
+#        print("undamped frequiences:", freqs)
         return {"eigenvalues": eigvals, "frequencies": freqs}, eigvecs
     else:
         # [[ M, 0],             [[C, K],
@@ -430,16 +432,16 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             eigvals = e.eigenvalues
             eigvecs = e.eigenvectors
         freqs = np.imag(eigvals) / 2. / np.pi
-        print("damped frequiences:", freqs)
+ #       print("damped frequiences:", freqs)
         damping = np.real(eigvals).astype(np.float64)
-        print(damping.dtype)
         return {"eigenvalues": eigvals, "frequencies": freqs, "damping": damping}, eigvecs
 
 
-if __name__ == "__main__":
+def run_command(command: Union[str, List[str]]):
+    if isinstance(command, str):
+        command = command.split()
     parser = initialize_argparser()
-    parsed_args = parser.parse_args(
-        "run ../configs/nsk/anisotropic.json".split())
+    parsed_args = parser.parse_args(command)
 
     mode = parsed_args.mode
 
@@ -462,7 +464,11 @@ if __name__ == "__main__":
         args_dict.pop("mode")
         config_file = args_dict.pop("config_file")
         res_dir = args_dict.pop("res_dir")
-        config_dict = get_config_dict(config_file)
+        try:
+            config_dict = get_config_dict(config_file)
+        except ValueError as ve:
+            print(str(ve))
+            exit(1)
         grid = grid_routine(config_dict)
         if "damping" in config_dict["Grid"]:
             damping = config_dict["Grid"]["damping"]
@@ -484,3 +490,11 @@ if __name__ == "__main__":
         file = os.path.join(res_dir, "res.csv")
         np.savetxt(file, arr, delimiter=', ',
                    header=names)  # , fmt=['(%+1.3e, %+1.3e1j)', '%1.5e+%.1ej', '%1.5e+%.1ej'])
+
+        res_dict["eigvecs"] = eigvecs
+        res_dict["grid"] = grid
+        return res_dict
+
+
+if __name__ == "__main__":
+    run_command(sys.argv[1:])
