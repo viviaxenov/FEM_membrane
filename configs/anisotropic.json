@@ -9,7 +9,7 @@
 	"pickle_file" : "../pickles/from_config/anisotropic",
 	  "rho" : 900.0,
   # density, [kg/m^3]
-  "h" : 1e-3
+  "h" : 1e-3,
   # thickness, [m]
 
 	# name of file to store serialized (pickle format) grid
@@ -79,5 +79,5 @@
       "solver" : "factorized"
       # defines the algorithm used at timestep
       # "factroized" --- factorizes matrix beforehand (LU decomposition by scipy.sparse.linalg.factorized)
-  },
+  }
 }

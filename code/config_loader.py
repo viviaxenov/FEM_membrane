@@ -1,4 +1,4 @@
-import code.membrane as mb
+import membrane as mb
 import scipy.sparse
 from scipy.sparse.linalg import eigsh
 import numpy as np
@@ -368,22 +368,26 @@ def run_routine(config_dict: dict, grid: mb.Grid):
     timestep = run_dict['courant'] * grid.estimate_tau() if 'courant' in run_dict else run_dict["timestep"]
     grid.set_time_integration_mode(timestep, run_dict.get("solver"))
 
+    # TODO: check this and implement time simulations with damping
+    if "damping" in run_dict:
+        raise NotImplementedError("Time integration with damping is not availiable yet")
+    #if "damping" in config_dict["Grid"]:
+    #    damping = run_dict["damping"]
+    #    grid.set_rayleigh_damping(**damping)
+    n_iter = run_dict['n_iter']
+    ipf = run_dict['ipf']
+    vtk_dir = run_dict['vtk_dir']
+    
+    # preparing directory
+    if not os.path.exists(vtk_dir):
+        os.makedirs(vtk_dir)
+    # writing LaTeX file with data on run
     try:
         provide_run_metadata(grid, config_dict)
     except NotImplementedError as e:
         print(str(e))
-
-    if "damping" in config_dict["Grid"]:
-        damping = run_dict["damping"]
-        grid.set_rayleigh_damping(**damping)
-    n_iter = run_dict['n_iter']
-    ipf = run_dict['ipf']
-    vtk_dir = run_dict['vtk_dir']
-
-    if not os.path.exists(vtk_dir):
-        os.makedirs(vtk_dir)
+    # dumping initial state
     grid.dump_vtk_grid(os.path.join(vtk_dir, "f0"))
-
     for i in range(n_iter):
         grid.iteration()
         if (i + 1) % ipf == 0:
@@ -497,4 +501,7 @@ def run_command(command: Union[str, List[str]]):
 
 
 if __name__ == "__main__":
-    run_command(sys.argv[1:])
+    if len(sys.argv) < 2:
+        run_command("-h")
+    else:
+        run_command(sys.argv[1:])

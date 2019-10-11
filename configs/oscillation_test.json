@@ -29,14 +29,13 @@
 		# density, [kg/m^3]
 		"h" : 5e-4,
 		# thickness, [m]
-		"damping" : {"alpha" : 1.0, "beta" : 1.0},
 		# Rayleigh damping C = alpha*M + beta*K
 
 		"Elastic" :
 		# Elastic properties of material
 		{
 			"E" : 1e10,
-			"nu" : 0.0
+			"nu" : 0.3
 			# if "D" is specified, fill in all 21 elastic constants
 			# you may fill only the upper triangle of the matrix
 			# lower will be discarded anyway
@@ -65,7 +64,7 @@
 	},
 	"Run" :
 	{
-	    "vtk_dir" : "../res/from_config/point/",
+	    "vtk_dir" : "../res/oscillation_test/",
 	    # path to store .vtk files (for visualisation)
 	    "n_iter" : 600,
 	    # total number of iterations simulated
@@ -76,9 +75,9 @@
 	    # "courant" : c --- sets timestep so that courant number
 	    # is c (according to our estimate of wave propagation speed)
 	    # "timestep" : dt --- sets timestep dt in the solver
-	    "solver" : "factorized"
+	    "solver" : "factorized",
 	    # defines the algorithm used at timestep
 	    # "factroized" --- factorizes matrix beforehand (LU decomposition by scipy.sparse.linalg.factorized)
-		#"Load": "[0., 0., where(sqrt((x - 0.5)**2 + (y - 0.5)**2) < 1e-2, 1e8, 0.)]"
+		"Load": "[0., 0., where(sqrt((x - 2.5e-2)**2 + (y - 9.0e-3)**2) < 1e-2, 1e8*cos(t), 0.)]"
 	}
 }
