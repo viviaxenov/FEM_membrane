@@ -1,4 +1,4 @@
-import code.membrane as mb
+import membrane as mb
 import scipy.sparse
 from scipy.sparse.linalg import eigsh
 import numpy as np

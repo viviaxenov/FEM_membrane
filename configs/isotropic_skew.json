@@ -1,6 +1,6 @@
 {
     "Grid": {
-        "pickle_file": "../pickles/from_config/nsk/isotropic",
+        "pickle_file": "../pickles/from_config/nsk/isotropic_skew",
         "Geometric": {
             "type": "uniform_rect",
             "L_x": 0.1,
@@ -15,20 +15,20 @@
             "nu": 0.26
         },
         "Constraints": {
-            "Velocity" : [{"v": [0.0, 0.0, 500.0], "locs": [0.05, 0.05]}]
+            "Velocity" : [{"v": [0.0, 800.0, 800.0], "locs": [0.05, 0.05]}]
         }
     },
     "Run": {
-        "vtk_dir": "../res/isotropic/",
-        "n_iter": 400,
-        "ipf": 5,
-        "courant": 0.05,
+        "vtk_dir": "../res/isotropic_skew/",
+        "n_iter": 2000,
+        "ipf": 100,
+        "courant": 0.25,
         "solver": "factorized"
     }
 }
 # This is a config file for FEM_membrane test runs
 # Setup description:
 # Square membrane with free border. Material is isotropic. 
-# Strike with fixed speed 500 m/s in center point
-# Direction of strike is normal to the surface
+# Strike with fixed speed in center point
+# Direction of strike is 45 degrees to normal
 # PS: you can add/delete comments as long as they are on a separate line starting with '#'

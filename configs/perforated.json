@@ -1,0 +1,40 @@
+{
+    "Grid": {
+        "pickle_file": "../pickles/from_config/nsk/perforated",
+        "Geometric": {
+            "type": "uniform_rect",
+            "L_x": 0.06,
+            "L_y": 0.24,
+            "n_x": 12,
+            "n_y": 48,
+			"perf_step_x": 3,
+			"perf_step_y": 4
+        },
+        "rho": 2750.0,
+        "h": 0.0001,
+        "Elastic": {
+            "E": 89000000000.0,
+            "nu": 0.26
+        },
+        "Constraints": {
+            "Displacement" : ["bottom"]
+        }
+    },
+    "Run": {
+		"Load": "[0.0, 0.0, where(logical_and(sqrt((x - 0.03)**2 + (y - 0.24)**2)< 0.01, t < 1e-2), -5e11, 0.0)]",
+        "vtk_dir": "../res/perforated/",
+        "n_iter": 4000,
+        "ipf": 10,
+        "courant": 0.5,
+        "solver": "factorized"
+    }
+}
+# This is a config file for FEM_membrane test runs
+# Setup description:
+# Rectangular membrane 6x24 cm with perforation. 
+# Bottom side is fixed, other free
+# Strike with force 5*10^10 Newton/m^3 in downward direction
+# Applied to small circle with radius  5 mm and center in the middle of top side
+# for a short period of time 0.01 seconds
+# PS: you can add/delete comments as long as they are on a separate line starting with '#'
+# PPS the physical meaning of this case is questionable

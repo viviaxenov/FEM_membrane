@@ -3,13 +3,18 @@
 # By default, the module assembles the grid and stores it in specified directory for further use
 # If "Run" block is specified, it would also do simulations and store visualisation results
 # PS: you can add/delete comments as long as they are on a separate line starting with '#'
+# Setup:
+# Square membrane 1x1 meter
+# with fixed border
+# load is concentrated in circle with radius 10 cm in the center
+# and is normal with magnitude 1e8 N/m^3
 {
 	"Grid":
 	{
-	"pickle_file" : "../pickles/from_config/point",
+	"pickle_file" : "../pickles/point",
 	"rho" : 900.0,
 	# density, [kg/m^3]
-	"h" : 1e-3
+	"h" : 1e-3,
 	# thickness, [m]
 	# name of file to store serialized (pickle format) grid
 	"Geometric" :
@@ -19,7 +24,6 @@
 		# the type of grid generation
 		# uniform rect creates rectangular grid composed of smaller rectangles,
 		# split into triangles by diagonal
-		# TODO: gmesh target
 		"L_x" : 1.0,
 		"L_y" : 1.0,
 		# rectangle sizes in x and y directions respectievely, [m]
@@ -63,12 +67,12 @@
 	},
    "Run" :
   {
-      "vtk_dir" : "../res/from_config/point/",
+      "vtk_dir" : "../res/point_load/",
       # path to store .vtk files (for visualisation)
       "n_iter" : 600,
       # total number of iterations simulated
       "ipf" : 5,
-	  "Load": "[0., 0., where(sqrt((x - 0.5)**2 + (y - 0.5)**2) < 1e-2, 1e8, 0.)]",
+  	"Load": "[0., 0., where(sqrt((x - 0.5)**2 + (y - 0.5)**2) < 1e-2, 1e8, 0.)]",
       # will produce .vtk outpup every ipf iteration
       "courant" : 0.5,
       # must specify one of "courant" or "timestep"
@@ -78,5 +82,5 @@
       "solver" : "factorized"
       # defines the algorithm used at timestep
       # "factroized" --- factorizes matrix beforehand (LU decomposition by scipy.sparse.linalg.factorized)
-  },
+  }
 }
