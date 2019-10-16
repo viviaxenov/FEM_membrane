@@ -413,7 +413,6 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             eigvals = e.eigenvalues
             eigvecs = e.eigenvectors
         freqs = np.sqrt(np.abs(eigvals)) / 2. / np.pi
-#        print("undamped frequiences:", freqs)
         return {"eigenvalues": eigvals, "frequencies": freqs}, eigvecs
     else:
         # [[ M, 0],             [[C, K],
@@ -432,7 +431,6 @@ def eigen_routine(grid: mb.Grid, args_dict: dict):
             eigvals = e.eigenvalues
             eigvecs = e.eigenvectors
         freqs = np.imag(eigvals) / 2. / np.pi
- #       print("damped frequiences:", freqs)
         damping = np.real(eigvals).astype(np.float64)
         return {"eigenvalues": eigvals, "frequencies": freqs, "damping": damping}, eigvecs
 
@@ -475,7 +473,9 @@ def run_command(command: Union[str, List[str]]):
             grid.set_rayleigh_damping(**damping)
         res_dict, eigvecs = eigen_routine(grid, args_dict)
 
-        name, dir = os.path.split(config_file)
+        dir, name = os.path.split(config_file)
+        fname, ext = os.path.splitext(name)
+        name = fname + "_" + ext[1:]
         if res_dir is None:
             res_dir = os.path.join(dir, "eigen_results", name)
         else:
@@ -493,6 +493,7 @@ def run_command(command: Union[str, List[str]]):
 
         res_dict["eigvecs"] = eigvecs
         res_dict["grid"] = grid
+        res_dict["config"] = config_dict
         return res_dict
 
 

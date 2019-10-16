@@ -2,8 +2,8 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg
 
-import code.membrane as mb
-from code.config_loader import run_command
+import membrane as mb
+from config_loader import run_command
 
 import os
 import pandas as pd
@@ -20,7 +20,7 @@ def get_analytical_freqs(K, M, Lx, Ly, a):
     return np.array(freqs)
 
 
-res_dict = run_command("eigen ../configs/isotropic.json --k 30 --which SM --tol 1e-11")
+res_dict = run_command("eigen ../configs/mode_analysis.json ../res/ --k 40 --which SM --tol 1e-12 ")
 os.makedirs("../res/modes/", exist_ok=True)
 np.savetxt("../res/modes/raw_eigvecs.csv", res_dict["eigvecs"], delimiter=',')
 np.savetxt("../res/modes/raw_eigvals.csv", res_dict["eigenvalues"], delimiter=',')
@@ -53,11 +53,18 @@ for i in range(vertical_modes.shape[0]):
     g.set_sigma()
     g.dump_vtk_grid(f"../res/modes/mode{i}.vtk")
 
-E = 1e6
-nu = 0.45
-rho = 900.
+try:
+    cfg = res_dict["config"]
+    E = cfg["Grid"]["Elastic"]["E"]
+    nu = cfg["Grid"]["Elastic"]["nu"]
+    rho = cfg["Grid"]["rho"]
+    L_x = cfg["Grid"]["Geometric"]["L_x"]
+    L_y = cfg["Grid"]["Geometric"]["L_y"]
+except KeyError as ke:
+    print("Failed to get isotropic elasticity params. Aborting")
+    exit(1)
 a = np.sqrt(E / 2. / (1. + nu) / rho)
-analytical_freqs = get_analytical_freqs(6, 6, 1., 2., a).flatten()
+analytical_freqs = get_analytical_freqs(7, 7, L_x, L_y, a).flatten()
 analytical_freqs.sort()
 analytical_freqs = analytical_freqs[:vertical_freqs.shape[0]]
 
