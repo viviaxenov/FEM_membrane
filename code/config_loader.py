@@ -16,6 +16,8 @@ import argparse
 from typing import Tuple, List, Union
 from scipy.sparse.linalg.eigen.arpack.arpack import ArpackNoConvergence
 
+import pygmsh
+import meshio
 
 def initialize_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -146,6 +148,7 @@ def check_constraints_dict(constr: dict):
                 raise ValueError(msg)
 
 
+supported_generation_modes = {'uniform_rect', 'gmsh_rect', 'gmsh_from_geometry'}
 def check_grid_dict(grid_dict: dict):
     try:
         rho = grid_dict['rho']
@@ -155,14 +158,10 @@ def check_grid_dict(grid_dict: dict):
             geom = grid_dict['Geometric']
         except KeyError:
             raise KeyError("\"Geometric\" section must be specified! Aborting")
-        if geom['type'] != 'uniform_rect':
-            raise ValueError("Type must be \"uniform_rect\". Aborting\n(PS.: Wait for further releases "
-                             "for more sophisticated grid generation routines)")
-        all_fields_here = geom['L_x'] and geom['L_y'] and geom['n_y'] and geom['n_x']
-        if ('perf_step_x' in geom) != ('perf_step_y' in geom):
-            raise ValueError(
-                "Both \"perf_step_x\" and \"perf_step_y\" must be specified in order to get perforated grid."
-                " Aborting")
+        tp = geom['type']
+        if tp not in supported_generation_modes:
+            raise ValueError(f'Mesh generation type {tp} is not supported. Supported types are {supported_generation_modes}')
+        #-----------------------------------------------------------------------------------------
         if "Elastic" not in grid_dict:
             raise ValueError("\"Elastic\" section must be specified. Aborting")
         elastic = grid_dict['Elastic']
@@ -197,26 +196,28 @@ def check_grid_dict(grid_dict: dict):
 
 def generate_grid_from_dict(grid_dict: dict):
     check_grid_dict(grid_dict)  # ???
+
     geom = grid_dict['Geometric']
-    X = geom['L_x']
-    Y = geom['L_y']
-    n_x = geom['n_x']
-    n_y = geom['n_y']
+    elastic = grid_dict['Elastic']
     rho = grid_dict['rho']
     h = grid_dict['h']
-    perforated = ('perf_step_x' in geom) and ('perf_step_y' in geom)
-    elastic = grid_dict['Elastic']
     D = parse_elastic_tensor(elastic.get('D'), elastic.get("unit"))
-
     E = elastic.get('E')
     nu = elastic.get('nu')
-    damping = grid_dict.get("damping")
-    if perforated:
-        step_x = geom['perf_step_x']
-        step_y = geom['perf_step_y']
-        g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu)
+
+    tp = geom['type']
+
+    g: mb.Grid = {}
+
+    if tp == 'uniform_rect':
+        g = perforated_grid_from_dict(geom, h, rho, D, E, nu)
+    elif tp == 'gmsh_rect':
+        g = rect_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
+#    elif tp == 'gmsh_from_geometry':
+#        g = geometry_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
     else:
-        g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D)
+        raise ValueError(f'Mesh generation type {tp} is not supported. Supported types are {supported_generation_modes}')
+
     g.ready()
     constr = grid_dict["Constraints"] if "Constraints" in grid_dict else {}
     vel = constr['Velocity'] if "Velocity" in constr else []
@@ -233,6 +234,52 @@ def generate_grid_from_dict(grid_dict: dict):
         g.C = g.C.tocsc()
     return g
 
+def perforated_grid_from_dict(geom: dict, 
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+    try:
+        all_fields_here = geom['L_x'] and geom['L_y'] and geom['n_y'] and geom['n_x']
+    except KeyError as ke:
+        print(f'Obligatory key {ke.args[0]} missing')
+            
+    if ('perf_step_x' in geom) != ('perf_step_y' in geom):
+        raise ValueError("Both \"perf_step_x\" and \"perf_step_y\" must be specified in order to get perforated grid."
+                            " Aborting")
+    X = geom['L_x']
+    Y = geom['L_y']
+    n_x = geom['n_x']
+    n_y = geom['n_y']
+    perforated = ('perf_step_x' in geom) and ('perf_step_y' in geom)
+    elastic = grid_dict['Elastic']
+    damping = grid_dict.get("damping")
+    if perforated:
+        step_x = geom['perf_step_x']
+        step_y = geom['perf_step_y']
+        g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu)
+    else:
+        g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D)
+
+    return g
+
+def rect_gmsh_grid_from_dict(geom_dict: dict,
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+    X = geom_dict['L_x']
+    Y = geom_dict['L_y']
+    lcar = geom_dict['lcar']
+    geometry = pygmsh.built_in.Geometry()
+    poly = geometry.add_polygon([
+        [0., 0., 0.],
+        [0., Y, 0.],
+        [X, Y, 0.],
+        [X, 0., 0.]], 
+        lcar=lcar)
+    mesh = pygmsh.generate_mesh(geometry, verbose=False, dim=2)
+
+    return mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
+
+def geometry_gmsh_grid_from_dict(geom: dict,
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+
+    mesh = meshio.read(geom[''])
 
 def check_run_dict(run_dict: dict):
     try:

@@ -13,6 +13,7 @@ import warnings
 import pickle
 
 import pyvtk as pvtk
+import pygmsh
 
 
 # tbc = to be counted/coded/computed/
@@ -487,6 +488,45 @@ def generate_uniform_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
                           h: np.float64, rho: np.float64,
                           D=None, E=None, nu=None, damping=None) -> Grid:
     return generate_perforated_grid(X, Y, n_x, n_y, n_x + 1, n_y + 1, h, rho, D=D, E=E, nu=nu)
+
+
+def generate_from_points_and_triangles(points, triangles, 
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+
+    if points.shape[1] != 2:
+        points = points.T
+    if points.shape[1] != 2:
+        raise ArgumentException(f'Points must have shape (n_vertex, 2) or (2, n_vertex). Got {points.shape}')
+
+
+    if D is None and (E is None or nu is None):
+        raise ValueError("Either a full elastic tensor D or elastic constants (E, nu)"
+                         "must be specified")
+    if D is None:
+        D = get_isotropic_elastic_tensor(E, nu)
+
+    n_vertex = points.shape[0]
+    res = Grid(n_vertex)
+
+    res.x_0 += points[:, 0]
+    res.y_0 += points[:, 1]
+
+    for triangle in triangles:
+        triangle = list(map(int, triangle))
+        node_ind = (triangle[0], triangle[1], triangle[2])
+        el = Element(node_ind, D, h, rho)
+        res.elements.append(el)
+    return res
+
+def generate_from_gmsh_mesh(mesh,
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+    points = mesh.points[:, :2] # only 2-d coords
+    triangles = mesh.cells['triangle']
+    return generate_from_points_and_triangles(points, triangles, h, rho, D, E, nu)
+
+#def gmsh_rectangle_grid(X: np.float64, Y: np.float64,
+#                          h: np.float64, rho: np.float64,
+#                          D=None, E=None, nu=None, lcar=0.05) -> Grid:
 
 
 def store_random_grid(path: str, n_x: int, n_y: int, n_inner: int,
