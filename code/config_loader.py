@@ -213,8 +213,8 @@ def generate_grid_from_dict(grid_dict: dict):
         g = perforated_grid_from_dict(geom, h, rho, D, E, nu)
     elif tp == 'gmsh_rect':
         g = rect_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
-#    elif tp == 'gmsh_from_geometry':
-#        g = geometry_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
+    elif tp == 'gmsh_from_geometry':
+        g = geometry_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
     else:
         raise ValueError(f'Mesh generation type {tp} is not supported. Supported types are {supported_generation_modes}')
 
@@ -257,7 +257,6 @@ def perforated_grid_from_dict(geom: dict,
         g = mb.generate_perforated_grid(X, Y, n_x, n_y, step_x, step_y, h, rho, D=D, E=E, nu=nu)
     else:
         g = mb.generate_uniform_grid(X, Y, n_x, n_y, h, rho, E=E, nu=nu, D=D)
-
     return g
 
 def rect_gmsh_grid_from_dict(geom_dict: dict,
@@ -265,6 +264,8 @@ def rect_gmsh_grid_from_dict(geom_dict: dict,
     X = geom_dict['L_x']
     Y = geom_dict['L_y']
     lcar = geom_dict['lcar']
+    
+    # creating geometry
     geometry = pygmsh.built_in.Geometry()
     poly = geometry.add_polygon([
         [0., 0., 0.],
@@ -276,10 +277,19 @@ def rect_gmsh_grid_from_dict(geom_dict: dict,
 
     return mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
 
-def geometry_gmsh_grid_from_dict(geom: dict,
+def geometry_gmsh_grid_from_dict(geom_dict: dict,
         h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+    path = geom_dict['geofile']
+    
+    geo = pygmsh.built_in.Geometry()
 
-    mesh = meshio.read(geom[''])
+    # TODO: this is awful mb can fix it
+    with open(path, 'r') as ifile:
+        geo._GMSH_CODE.append(ifile.read())
+
+    mesh = pygmsh.generate_mesh(geo, verbose=False, dim=2)
+    return mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
+    
 
 def check_run_dict(run_dict: dict):
     try:

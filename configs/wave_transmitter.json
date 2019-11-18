@@ -1,0 +1,41 @@
+{
+    "Grid":
+    {
+        "pickle_file" : "../pickles/point_gmsh",
+        "rho" : 2700.0,
+        "h" : 1e-3,
+        "Geometric" :
+        {
+            "type" : "gmsh_from_geometry",
+            "geofile": "./configs/wave_transmitter.geo"
+        },
+        "Elastic" :
+        {
+            "E" : 7e10,
+            "nu" : 0.34
+        },  
+        "Constraints" :
+        {
+            "Displacement" : ["border"]
+        }
+    },
+   "Run" :
+    {
+        "vtk_dir" : "../res/point_gmsh/",
+        "n_iter" : 10,
+        "ipf" : 5,
+        "Load": "[where(logical_and(x < -0.025, y < 0.0665, y > 0.0035), 1e8*sin(100000*2*3.14*t), 0.), 0.0, 0.0]",
+        "courant" : 0.5,
+        "solver" : "factorized"
+    }
+}
+
+# This is a config file for FEM_membrane test runs
+# By default, the module assembles the grid and stores it in specified directory for further use
+# If "Run" block is specified, it would also do simulations and store visualisation results
+# PS: you can add/delete comments as long as they are on a separate line starting with '#'
+# Setup:
+# Square membrane 1x1 meter
+# with fixed border
+# load is concentrated in circle with radius 10 cm in the center
+# and is normal with magnitude 1e8 N/m^3
