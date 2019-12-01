@@ -249,8 +249,6 @@ def perforated_grid_from_dict(geom: dict,
     n_x = geom['n_x']
     n_y = geom['n_y']
     perforated = ('perf_step_x' in geom) and ('perf_step_y' in geom)
-    elastic = grid_dict['Elastic']
-    damping = grid_dict.get("damping")
     if perforated:
         step_x = geom['perf_step_x']
         step_y = geom['perf_step_y']
@@ -274,8 +272,14 @@ def rect_gmsh_grid_from_dict(geom_dict: dict,
         [X, 0., 0.]], 
         lcar=lcar)
     mesh = pygmsh.generate_mesh(geometry, verbose=False, dim=2)
+    res = mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
 
-    return mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
+    res.outer_border_indices['left'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0) < 1e-16]
+    res.outer_border_indices['right'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0 - X) < 1e-16]
+    res.outer_border_indices['bottom'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0) < 1e-16]
+    res.outer_border_indices['top'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0 - Y) < 1e-16]
+
+    return res
 
 def geometry_gmsh_grid_from_dict(geom_dict: dict,
         h: np.float64, rho: np.float64, D=None, E=None, nu=None):
