@@ -1,0 +1,28 @@
+{
+    "Grid":
+    {
+        "pickle_file" : "../pickles/wt_transverse",
+        "rho" : 2700.0,
+        "h" : 1e-3,
+        "Geometric" :
+        {
+            "type" : "gmsh_from_geometry",
+            "geofile": "./configs/wave_transmitter.geo"
+        },
+        "Elastic" :
+        {
+            "E" : 7e10,
+            "nu" : 0.34
+        }  
+    },
+   "Run" :
+    {
+        "vtk_dir" : "../res/wt_transverse",
+        "n_iter" : 600,
+        "ipf" : 3,
+        "Load": "[0.0, where(logical_and(x < -0.0035, t <= 1e-5), 1e9*sin(1e5*2*3.1416*t), 0.0), 0.0]",
+        "courant" : 5,
+        "solver" : "factorized"
+    }
+}
+

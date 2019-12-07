@@ -1,0 +1,25 @@
+{
+    "Grid":
+    {
+        "pickle_file" : "../pickles/3200irreg",
+        "rho" : 2700.0,
+        "h" : 1e-3,
+        "Geometric" :
+        {
+            "type" : "gmsh_rect",
+            "L_x" : 1.0,
+            "L_y" : 2.0,
+            "lcar": 0.0625
+        },
+        "Elastic" :
+        {
+            "E" : 1e11,
+            "nu" : 0.45
+        },  
+        "Constraints" :
+        {
+            "Displacement" : ["border"]
+        }
+    }
+}
+

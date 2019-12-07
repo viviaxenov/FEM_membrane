@@ -1,7 +1,7 @@
 {
     "Grid":
     {
-        "pickle_file" : "../pickles/point_gmsh",
+        "pickle_file" : "../pickles/wt2",
         "rho" : 2700.0,
         "h" : 1e-3,
         "Geometric" :
@@ -13,19 +13,15 @@
         {
             "E" : 7e10,
             "nu" : 0.34
-        },  
-        "Constraints" :
-        {
-            "Displacement" : ["border"]
-        }
+        }  
     },
    "Run" :
     {
-        "vtk_dir" : "../res/point_gmsh/",
-        "n_iter" : 10,
-        "ipf" : 5,
-        "Load": "[where(logical_and(x < -0.025, y < 0.0665, y > 0.0035), 1e8*sin(100000*2*3.14*t), 0.), 0.0, 0.0]",
-        "courant" : 0.5,
+        "vtk_dir" : "../res/wave_transmitter_small/",
+        "n_iter" : 600,
+        "ipf" : 3,
+        "Load": "[where(logical_and(x < -0.0035, t <= 1e-5), 1e9*sin(1e5*2*3.1416*t), 0.), 0.0, 0.0]",
+        "courant" : 5,
         "solver" : "factorized"
     }
 }

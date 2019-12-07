@@ -71,6 +71,7 @@ except KeyError as ke:
     print("Failed to get isotropic elasticity params. Aborting")
     exit(1)
 a = np.sqrt(E / 2. / (1. + nu) / rho)
+print(a, flush=True)
 analytical_freqs = get_analytical_freqs(7, 7, L_x, L_y, a).flatten()
 analytical_freqs.sort()
 analytical_freqs = analytical_freqs[:vertical_freqs.shape[0]]
@@ -79,7 +80,7 @@ df = pd.DataFrame({"Analytical": analytical_freqs,
                    "Numeric": vertical_freqs,
                    "Rel. err., %": np.abs(analytical_freqs - vertical_freqs) / vertical_freqs * 100})
 with open(os.path.join(dump_dir, "frequencies.html"), "w") as ofile:
-    df.to_html(ofile)
+    df.to_html(ofile, float_format='%.2f')
 with open(os.path.join(dump_dir, "frequencies.tex"), "w") as ofile:
-    df.to_latex(ofile)
+    df.to_latex(ofile, float_format='%.2f')
 

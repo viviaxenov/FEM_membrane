@@ -4,7 +4,7 @@ import meshio
 
 from scipy.spatial.transform import Rotation as R
 
-def add_primary_hole(geo: pygmsh.built_in.Geometry, l1, r1, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
+def add_primary_hole(geo: pygmsh.opencascade.Geometry, l1, r1, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
     """
         Returns gmsh geometry string for a hole that is always 
         inside lattice square (45deg to x axis in original paper). 
@@ -21,38 +21,25 @@ def add_primary_hole(geo: pygmsh.built_in.Geometry, l1, r1, a,  x_0=0., y_0=0., 
             [r1, l1/2, 0.0],
             [-r1, l1/2, 0.0],
         ])
-    rect_top_arc = np.array([0.0, l1/2 + r1, 0.0])
-    rect_bot_arc  = -rect_top_arc
 
     r = R.from_euler('z', -rotation_deg, degrees=True)
-    for el in [rect, rect_top_arc, rect_bot_arc]:
+    for el in [rect]:
         el[:] = r.apply(el)
         el += np.array([x_0, y_0, 0.0])
         el += np.array([a/2, a/2, 0.0])
 
-    p1 = geo.add_point(rect[0], lcar=lcar)
-    p2 = geo.add_point(rect[1], lcar=lcar)
-    p3 = geo.add_point(rect[2], lcar=lcar)
-    p4 = geo.add_point(rect[3], lcar=lcar)
 
-    c_top = geo.add_point((rect[2] + rect[3])/2)
-    c_bot = geo.add_point((rect[0] + rect[1])/2)
+    poly = geo.add_polygon(rect, lcar=lcar)
 
-    rect_top_arc = geo.add_point(rect_top_arc, lcar=lcar)
-    rect_bot_arc = geo.add_point(rect_bot_arc, lcar=lcar)
+    c_top = geo.add_disk((rect[2] + rect[3])/2, r1)
+    c_bot = geo.add_disk((rect[0] + rect[1])/2, r1)
 
-    hole = geo.add_line_loop([
-                geo.add_line(p2,p3),
-                geo.add_circle_arc(p3, c_top, rect_top_arc),
-                geo.add_circle_arc(rect_top_arc, c_top, p4),
-                geo.add_line(p4, p1),
-                geo.add_circle_arc(p1, c_bot, rect_bot_arc),
-                geo.add_circle_arc(rect_bot_arc, c_bot, p2),
-            ])
+    hole = geo.boolean_union([c_top, poly, c_bot])
+
     #centers
     return hole
 
-def add_secondary_holes(geo: pygmsh.built_in.Geometry, l2, r2, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
+def add_secondary_holes(geo: pygmsh.opencascade.Geometry, l2, r2, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
     left_corner = np.array([-a/np.sqrt(2), 0.0, 0.0])
     right_corner = - left_corner
 
@@ -67,72 +54,73 @@ def add_secondary_holes(geo: pygmsh.built_in.Geometry, l2, r2, a,  x_0=0., y_0=0
 
     right_rect = base_rect + np.array([a/np.sqrt(2) - l2, 0.0, 0.0])
 
-    right_arc = np.array([a/np.sqrt(2) - l2 - r2, 0.0, 0.0])
-    left_arc = -right_arc
-
-
     r = R.from_euler('z', -rotation_deg, degrees=True)
-    for el in [left_rect, right_rect, right_arc, left_arc]:
+    for el in [left_rect, right_rect]:
         el[:] = r.apply(el)
         el += np.array([x_0, y_0, 0.0])
         el += np.array([a/2, a/2, 0.0])
     
     holes = []
 
-    for rect, arc in [(left_rect, left_arc), (right_rect, right_arc)]:
-        p1 = geo.add_point(rect[0], lcar=lcar)
-        p2 = geo.add_point(rect[1], lcar=lcar)
-        p3 = geo.add_point(rect[2], lcar=lcar)
-        p4 = geo.add_point(rect[3], lcar=lcar)
+    for rect in [left_rect, right_rect]:
 
-        arc_center = geo.add_point((rect[3] + rect[0])/2)
+        poly = geo.add_polygon(rect, lcar=lcar)
 
-        rect_top_arc = geo.add_point(arc, lcar=lcar)
+        circle = geo.add_disk((rect[3] + rect[0])/2, r1)
 
-        hole = geo.add_line_loop([
-                    geo.add_line(p1, p2),
-                    geo.add_line(p2, p3),
-                    geo.add_line(p3, p4),
-                    geo.add_circle_arc(p4, arc_center, rect_top_arc),
-                    geo.add_circle_arc(rect_top_arc, arc_center, p1),
-                ])
-        holes.append(hole)
+        holes.append(geo.boolean_union([poly, circle]))
     return holes
 
-d = 20.
-a = 3.5
-dx = 10
-Lx_add = 50
-dy = 75
+def add_lattice_element(geo: pygmsh.opencascade.Geometry, l1, r1, l2, r2, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
+    holes = [add_primary_hole(geo, l1, r1, a,  x_0, y_0, lcar, rotation_deg)] \
+            + add_secondary_holes(geo, l2, r2, a, x_0, y_0, lcar, rotation_deg)
+    base_square_cords = np.array([
+                                    [0.0, 0.0, 0.0],
+                                    [a, 0.0, 0.0],
+                                    [a, a, 0.0],
+                                    [0.0, a, 0.0],
+                                        ]) + np.array([x_0, y_0, 0.0])
+    base_square = geo.add_polygon(base_square_cords, lcar=lcar)
+    lattice_element = geo.boolean_difference([base_square], holes)
+    return lattice_element
+
+
+d = 20.*1e-3
+a = 3.5*1e-3
+dx = 10*1e-3
+Lx_add = 50*1e-3
+dy = 7*1e-3
 l1 = 0.73*a
 l2 = 0.20*a
 r1 = 0.1*a
 r2 = 0.1*a
 
-n_x = 9
-n_y = 20
+n_x = 3
+n_y = 7
 
-lcar_external = 18
-lcar_holes = 0.9
+lcar_external = 4*1e-3
+lcar_holes = 0.4*1e-3
 
-geo = pygmsh.built_in.Geometry()
+geo = pygmsh.opencascade.Geometry()
 
 holes = []
+
+lattice = []
 
 for i_x in range(n_x):
     for i_y in range(n_y):
         x_0 = i_x*a
         y_0 = i_y*a
-        hole = add_primary_hole(geo, l1, r1, a, x_0, y_0, lcar=lcar_holes)
-        holes.append(hole)
-for i_x in range(n_x):
-    for i_y in range(n_y):
-        x_0 = i_x*a + a/2
-        y_0 = i_y*a + a/2
-        hole = add_primary_hole(geo, l2, r2, a, x_0, y_0, lcar=lcar_holes, rotation_deg=-45)
-        holes.append(hole)
-        #holes += add_secondary_holes(geo, l2, r2, a, x_0, y_0, lcar=lcar_holes)
+        holes.append(add_primary_hole(geo, l1, r1, a, x_0, y_0, lcar=lcar_holes))
+        holes += add_secondary_holes(geo, l2, r2, a, x_0, y_0, lcar=lcar_holes)
 
+lattice_area = geo.add_polygon([
+                                [0.0, 0.0, 0.0],
+                                [n_x*a, 0.0, 0.0],
+                                [n_x*a, n_y*a, 0.0],
+                                [0.0, n_y*a, 0.0],
+                            ], lcar=lcar_holes)
+perforation = geo.boolean_intersection([lattice_area] + holes)
 
 poly = geo.add_polygon([
             [-dx, -dy, 0.0],
@@ -140,9 +128,9 @@ poly = geo.add_polygon([
             [n_x*a + dx + Lx_add, n_y*a + dy, 0.0],
             [-dx, n_y*a + dy, 0.0],
             ], 
-            holes=holes,
             lcar=lcar_external
             )
+result = geo.boolean_difference([poly], [perforation])
 
 
 with open('rectangle.geo', 'w') as ofile:

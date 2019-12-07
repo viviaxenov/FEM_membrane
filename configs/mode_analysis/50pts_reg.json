@@ -1,0 +1,25 @@
+{
+    "Grid":
+    {
+        "pickle_file" : "../pickles/50reg",
+        "rho" : 2700.0,
+        "h" : 1e-3,
+        "Geometric" :
+        {
+            "type" : "uniform_rect",
+            "L_x" : 1.0,
+            "L_y" : 2.0,
+            "n_x" : 5,
+            "n_y": 10
+        },
+        "Elastic" :
+        {
+            "E" : 1e11,
+            "nu" : 0.45
+        },  
+        "Constraints" :
+        {
+            "Displacement" : ["border"]
+        }
+    }
+}
