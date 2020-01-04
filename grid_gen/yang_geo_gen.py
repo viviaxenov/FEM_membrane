@@ -74,32 +74,24 @@ def add_secondary_holes(geo: pygmsh.opencascade.Geometry, l2, r2, a,  x_0=0., y_
 def add_lattice_element(geo: pygmsh.opencascade.Geometry, l1, r1, l2, r2, a,  x_0=0., y_0=0., lcar=0.1, rotation_deg=45):
     holes = [add_primary_hole(geo, l1, r1, a,  x_0, y_0, lcar, rotation_deg)] \
             + add_secondary_holes(geo, l2, r2, a, x_0, y_0, lcar, rotation_deg)
-    base_square_cords = np.array([
-                                    [0.0, 0.0, 0.0],
-                                    [a, 0.0, 0.0],
-                                    [a, a, 0.0],
-                                    [0.0, a, 0.0],
-                                        ]) + np.array([x_0, y_0, 0.0])
-    base_square = geo.add_polygon(base_square_cords, lcar=lcar)
-    lattice_element = geo.boolean_difference([base_square], holes)
-    return lattice_element
+    return holes
 
 
-d = 20.*1e-3
+d = 50.*1e-3
 a = 3.5*1e-3
-dx = 10*1e-3
-Lx_add = 50*1e-3
-dy = 7*1e-3
+dx = 5*1e-3
+Lx_add = 40*1e-3
+dy = 50*1e-3
 l1 = 0.73*a
 l2 = 0.20*a
 r1 = 0.1*a
 r2 = 0.1*a
 
-n_x = 3
-n_y = 7
+n_x = 9
+n_y = 14
 
 lcar_external = 4*1e-3
-lcar_holes = 0.4*1e-3
+lcar_holes = 0.2e-3
 
 geo = pygmsh.opencascade.Geometry()
 
@@ -111,16 +103,16 @@ for i_x in range(n_x):
     for i_y in range(n_y):
         x_0 = i_x*a
         y_0 = i_y*a
-        holes.append(add_primary_hole(geo, l1, r1, a, x_0, y_0, lcar=lcar_holes))
-        holes += add_secondary_holes(geo, l2, r2, a, x_0, y_0, lcar=lcar_holes)
+        holes += add_lattice_element(geo, l1, r1, l2, r2, a,  x_0=x_0, y_0=y_0, lcar=lcar_holes)
 
-lattice_area = geo.add_polygon([
-                                [0.0, 0.0, 0.0],
-                                [n_x*a, 0.0, 0.0],
-                                [n_x*a, n_y*a, 0.0],
-                                [0.0, n_y*a, 0.0],
-                            ], lcar=lcar_holes)
-perforation = geo.boolean_intersection([lattice_area] + holes)
+#lattice_area = geo.add_polygon([
+#                                [0.0, 0.0, 0.0],
+#                                [n_x*a, 0.0, 0.0],
+#                                [n_x*a, n_y*a, 0.0],
+#                                [0.0, n_y*a, 0.0],
+#                            ], lcar=lcar_holes)
+
+#perf = geo.boolean_intersection([lattice_area] + holes)
 
 poly = geo.add_polygon([
             [-dx, -dy, 0.0],
@@ -128,12 +120,12 @@ poly = geo.add_polygon([
             [n_x*a + dx + Lx_add, n_y*a + dy, 0.0],
             [-dx, n_y*a + dy, 0.0],
             ], 
-            lcar=lcar_external
+            lcar=lcar_external, 
             )
-result = geo.boolean_difference([poly], [perforation])
+result = geo.boolean_difference([poly], holes)
 
 
-with open('rectangle.geo', 'w') as ofile:
+with open('wave_transmitter.geo', 'w') as ofile:
     ofile.write(geo.get_code())
 
 mesh = ""
