@@ -5,8 +5,8 @@
             "type": "uniform_rect",
             "L_x": 0.1,
             "L_y": 0.1,
-            "n_y": 40,
-            "n_x": 40
+            "n_y": 20,
+            "n_x": 20
         },
         "rho": 2750.0,
         "h": 0.0001,
@@ -20,9 +20,9 @@
     },
     "Run": {
         "vtk_dir": "../res/isotropic/",
-        "n_iter": 400,
-        "ipf": 5,
-        "courant": 0.05,
+        "n_iter": 800,
+        "ipf": 20,
+        "courant": 0.5,
         "solver": "factorized"
     }
 }

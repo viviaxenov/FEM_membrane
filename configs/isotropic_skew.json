@@ -19,10 +19,10 @@
         }
     },
     "Run": {
-        "vtk_dir": "../res/isotropic_skew/",
-        "n_iter": 2000,
-        "ipf": 100,
-        "courant": 0.25,
+        "vtk_dir": "../res/isotropic/",
+        "n_iter": 800,
+        "ipf": 20,
+        "courant": 0.5,
         "solver": "factorized"
     }
 }

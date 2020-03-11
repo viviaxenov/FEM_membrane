@@ -18,6 +18,7 @@ from scipy.sparse.linalg.eigen.arpack.arpack import ArpackNoConvergence
 
 import pygmsh
 import meshio
+from parse_inp import parse_inp_file
 
 def initialize_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -65,7 +66,7 @@ def parse_elastic_tensor(D: np.ndarray, unit):
 # checks if an item defines a location (for constraining)
 # e.g. is 2-d array [x, y] or one of "top", "bottom", "left", "right", "border"]
 def is_loc(item):
-    if item in ["top", "bottom", "left", "right", "border"]:
+    if isinstance(item, str):
         return True
     try:
         a = np.array(item, dtype=np.float64)
@@ -148,7 +149,7 @@ def check_constraints_dict(constr: dict):
                 raise ValueError(msg)
 
 
-supported_generation_modes = {'uniform_rect', 'gmsh_rect', 'gmsh_from_geometry'}
+supported_generation_modes = {'uniform_rect', 'gmsh_rect', 'gmsh_from_geometry', 'from_mesh'}
 def check_grid_dict(grid_dict: dict):
     try:
         rho = grid_dict['rho']
@@ -215,6 +216,17 @@ def generate_grid_from_dict(grid_dict: dict):
         g = rect_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
     elif tp == 'gmsh_from_geometry':
         g = geometry_gmsh_grid_from_dict(geom, h, rho, D, E, nu)
+    elif tp == 'from_mesh':
+        try:
+            mesh_file_path = geom['mesh_file']
+            mesh_fname = os.path.basename(mesh_file_path)
+            _, ext = os.path.splitext(mesh_fname)
+            if ext != '.inp':
+                raise ValueError(f"Only .inp mesh files supported. Got {ext}")
+        except KeyError:
+            raise KeyError(f"Provide .inp  mesh path")
+        nodes, triangles, node_groups, element_groups = parse_inp_file(mesh_file_path)
+        g = mb.generate_from_points_and_triangles(nodes, triangles, h, rho, D, E, nu, node_groups, element_groups)
     else:
         raise ValueError(f'Mesh generation type {tp} is not supported. Supported types are {supported_generation_modes}')
 
@@ -274,10 +286,16 @@ def rect_gmsh_grid_from_dict(geom_dict: dict,
     mesh = pygmsh.generate_mesh(geometry, verbose=False, dim=2)
     res = mb.generate_from_gmsh_mesh(mesh, h, rho, D, E, nu)
 
-    res.outer_border_indices['left'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0) < 1e-16]
-    res.outer_border_indices['right'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0 - X) < 1e-16]
-    res.outer_border_indices['bottom'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0) < 1e-16]
-    res.outer_border_indices['top'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0 - Y) < 1e-16]
+    res.node_groups['left'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0) < 1e-16]
+    res.node_groups['right'] = [i for i, x_0 in enumerate(res.x_0) if np.abs(x_0 - X) < 1e-16]
+    res.node_groups['bottom'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0) < 1e-16]
+    res.node_groups['top'] = [i for i, y_0 in enumerate(res.y_0) if np.abs(y_0 - Y) < 1e-16]
+
+    res.node_groups['border'] = \
+                    res.node_groups['left'] + \
+                    res.node_groups['right'] + \
+                    res.node_groups['bottom'] + \
+                    res.node_groups['top']
 
     return res
 
@@ -414,6 +432,8 @@ def provide_run_metadata(grid: mb.Grid, config_dict: dict):
             dmp_dict[key] = [val]
     data = pd.DataFrame.from_dict(dmp_dict)
     data_path = os.path.join(config_dict["Run"]["vtk_dir"], "details.tex")
+    if not os.path.exists(config_dict["Run"]["vtk_dir"]):
+        os.makedirs(config_dict["Run"]["vtk_dir"])
     with open(data_path, "w") as ofile:
         data.T.to_latex(ofile, escape=False)
 
@@ -508,7 +528,7 @@ def run_command(command: Union[str, List[str]]):
         unpack_json_config(parsed_args.pickle_path, parsed_args.json_path)
     elif mode == 'grid':
         config_dict = get_config_dict(parsed_args.config_file)
-        grid_routine(config_dict)
+        return grid_routine(config_dict)
     elif mode == 'run':
         config_dict = get_config_dict(parsed_args.config_file)
         if "Run" not in config_dict:

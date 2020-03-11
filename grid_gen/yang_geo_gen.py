@@ -79,7 +79,8 @@ def add_lattice_element(geo: pygmsh.opencascade.Geometry, l1, r1, l2, r2, a,  x_
 
 d = 50.*1e-3
 a = 3.5*1e-3
-dx = 5*1e-3
+dx = 10*1e-3
+dx_trans = 8*1e-3
 Lx_add = 40*1e-3
 dy = 50*1e-3
 l1 = 0.73*a
@@ -90,8 +91,8 @@ r2 = 0.1*a
 n_x = 9
 n_y = 14
 
-lcar_external = 4*1e-3
-lcar_holes = 0.2e-3
+lcar_external = 1*1e-2
+lcar_holes = 1e-3
 
 geo = pygmsh.opencascade.Geometry()
 
@@ -122,10 +123,23 @@ poly = geo.add_polygon([
             ], 
             lcar=lcar_external, 
             )
-result = geo.boolean_difference([poly], holes)
 
+transmitter_area = geo.add_polygon([
+                                        [-dx_trans, -2*a, 0.0],
+                                        [-dx_trans, (n_y+2)*a, 0.0],
+                                        [-dx, (n_y+2)*a, 0.0],
+                                        [-dx, -2*a, 0.0],
+                                    ],
+                                    lcar=lcar_holes,
+                                    )
 
-with open('wave_transmitter.geo', 'w') as ofile:
+#base = geo.boolean_union([transmitter_area, poly])
+#
+#result = geo.boolean_difference([base], holes)
+tmp = geo.boolean_difference([poly], holes)
+res = geo.boolean_union([tmp, transmitter_area])
+
+with open('wt.geo', 'w') as ofile:
     ofile.write(geo.get_code())
 
 mesh = ""

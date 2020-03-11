@@ -13,7 +13,6 @@ import warnings
 import pickle
 
 import pyvtk as pvtk
-import pygmsh
 
 
 # tbc = to be counted/coded/computed/
@@ -91,14 +90,12 @@ class Grid:
         self.beta_2 = 0.0
         self.damping = None
         self.A = []  # auxiliary matrix used in time integration
-        self.outer_border_indices = {"top": [],
-                                     "right": [],
-                                     "bottom": [],
-                                     "left": []
-                                     }
         self.constrained_vertices = set()
         self.time_solver_type = None
         self.iteration = None
+
+        self.node_groups = {}
+        self.element_groups = {}
 
     def add_elem(self, elem: Element):
         if (max(*elem.node_ind) >= self.n_nodes) or (min(*elem.node_ind) < 0):
@@ -181,6 +178,21 @@ class Grid:
             B[:, 3 * i:3 * (i + 1)] = np.row_stack((B_1, B_2))
         return B
 
+    def get_element_velocity(self, ind):
+        elem = self.elements[ind]
+        coords = self.get_elem_midpoint(ind)
+        v = np.zeros(3)
+        x, y = coords[0], coords[1]
+        for i in range(3):
+            j = (i + 1) % 3
+            k = (i + 2) % 3
+            I, J, K = elem.node_ind[i], elem.node_ind[j], elem.node_ind[k]  # indices in external massive
+            alpha = (self.x_0[J]*self.y_0[K] - self.x_0[K]*self.y_0[J])/elem.S
+            beta = -(self.y_0[K] - self.y_0[J]) / elem.S
+            gamma = (self.x_0[K] - self.x_0[J]) / elem.S
+            v += (alpha + beta*x + gamma*y)*self.a_t[3*I:3*(I+1)]
+        return v
+
     def set_DBmatrix(self):
         """"Calculates matrix linking stress and displacement for each element"""
         for elem in self.elements:
@@ -261,16 +273,12 @@ class Grid:
 
     def apply_velocity_constraints(self, locs: list, vel: np.ndarray):
         """Applies constraint da/dt = vel at all points specified in locs array"""
-        sides = ["top", "bottom", "left", "right"]
         while len(locs) > 0:
             item = locs.pop()
-            if item == "border":
-                locs += sides
-                continue
             locs[:] = (it for it in locs if it != item)  # remove duplicates of item
 
-            if item in sides:
-                for k in self.outer_border_indices[item]:
+            if isinstance(item, str) and item in self.node_groups.keys():
+                for k in self.node_groups[item]:
                     self.constrain_velocity(k, vel)
             else:
                 loc = np.array(item)
@@ -303,6 +311,15 @@ class Grid:
         self.assemble_f()
         self.assemble_M()
         self.set_sigma()
+
+    def get_elem_sigma(self, ind):
+        elem = self.elements[ind] 
+        I, J, K = elem.node_ind
+        a_e = np.concatenate([self.a[3 * I:3 * (I + 1)],
+                                  self.a[3 * J:3 * (J + 1)],
+                                  self.a[3 * K:3 * (K + 1)]])  
+        sigma = elem.DB @ a_e
+        return sigma
 
     def set_sigma(self):
         """Calculates stress tensor from displacements for each element; needs DB to be already calculated"""
@@ -460,19 +477,30 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
     dx = X / n_x
     dy = Y / n_y
 
+    res.node_groups['left'] = []
+    res.node_groups['right'] = []
+    res.node_groups['bottom'] = []
+    res.node_groups['top'] = []
+
     for i in range(n_y + 1):
         for j in range(n_x + 1):
             k = index(i, j)
             res.x_0[k], res.y_0[k] = dx * j, dy * i
             # adding indices to border array
             if j == 0:
-                res.outer_border_indices["left"].append(k)
+                res.node_groups["left"].append(k)
             if j == n_x:
-                res.outer_border_indices["right"].append(k)
+                res.node_groups["right"].append(k)
             if i == 0:
-                res.outer_border_indices["bottom"].append(k)
+                res.node_groups["bottom"].append(k)
             if i == n_y:
-                res.outer_border_indices["top"].append(k)
+                res.node_groups["top"].append(k)
+
+    res.node_groups['border'] = \
+                    res.node_groups['left'] + \
+                    res.node_groups['right'] + \
+                    res.node_groups['bottom'] + \
+                    res.node_groups['top']
 
     for i in range(n_y):
         for j in range(n_x):
@@ -491,7 +519,7 @@ def generate_uniform_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
 
 
 def generate_from_points_and_triangles(points, triangles, 
-        h: np.float64, rho: np.float64, D=None, E=None, nu=None):
+        h: np.float64, rho: np.float64, D=None, E=None, nu=None, node_groups=None, element_groups=None):
 
     if points.shape[1] != 2:
         points = points.T
@@ -516,6 +544,13 @@ def generate_from_points_and_triangles(points, triangles,
         node_ind = (triangle[0], triangle[1], triangle[2])
         el = Element(node_ind, D, h, rho)
         res.elements.append(el)
+
+    if node_groups is not None:
+       res.node_groups = node_groups
+
+    if element_groups is not None:
+       res.element_groups = element_groups
+
     return res
 
 def generate_from_gmsh_mesh(mesh,
@@ -524,64 +559,7 @@ def generate_from_gmsh_mesh(mesh,
     triangles = mesh.cells['triangle']
     return generate_from_points_and_triangles(points, triangles, h, rho, D, E, nu)
 
-#def gmsh_rectangle_grid(X: np.float64, Y: np.float64,
-#                          h: np.float64, rho: np.float64,
-#                          D=None, E=None, nu=None, lcar=0.05) -> Grid:
 
-
-def store_random_grid(path: str, n_x: int, n_y: int, n_inner: int,
-                      E: np.float64, nu: np.float64,
-                      h: np.float64, rho: np.float64, X: np.float64 = 1.0, Y: np.float64 = 1.0,
-                      disp: np.float64 = 0.1):
-    """
-    Creates a square grid of size X * Y. It has n_x + 1 or n_y + 1  vertices on sides and n_vert in total
-    The routine assembles M and K matrices and stores everything in pickle file specified by path
-    """
-
-    x_border = np.linspace(0, X, n_x + 1, endpoint=True)
-    y_border = np.linspace(0, Y, n_y + 1, endpoint=True)
-
-    cords = np.vstack((x_border, np.full_like(x_border, 0.0)))  # lower border
-    cords = np.append(cords, np.vstack((x_border, np.full_like(x_border, Y))), axis=1)  # upper border
-
-    y_border = y_border[1:-1]
-
-    cords = np.append(cords, np.vstack((np.full_like(y_border, 0.0), y_border)), axis=1)  # left border
-    cords = np.append(cords, np.vstack((np.full_like(y_border, X), y_border)), axis=1)  # right border
-
-    x_inner = np.random.normal(X / 2, disp, n_inner * 2)
-    y_inner = np.random.normal(Y / 2, disp, n_inner * 2)
-
-    index_x = np.logical_and(x_inner > 0, x_inner < X)
-    index_y = np.logical_and(y_inner > 0, y_inner < Y)
-
-    index = np.logical_and(index_x, index_y)
-    inner_cords = np.vstack((x_inner[index], y_inner[index]))[:, :n_inner]
-
-    if inner_cords.shape[1] < n_inner:
-        warnings.warn("Not enough inner points generated", RuntimeWarning)
-
-    cords = np.append(cords, inner_cords, axis=1)
-
-    n_vertex = cords.shape[1]
-    res = Grid(n_vertex)
-    res.x_0 += cords[0]
-    res.y_0 += cords[1]
-
-    triangulation = Delaunay(cords.T)
-
-    for triangle in triangulation.simplices:
-        triangle = list(map(int, triangle))
-        node_ind = (triangle[0], triangle[1], triangle[2])
-        el = Element(node_ind, E, nu, h, rho)
-        res.elements.append(el)
-
-    res.ready()
-    res.K = res.K.tocsc()
-    res.M = res.M.tocsc()
-
-    with open(path, 'wb') as ofile:
-        pickle.dump(res, ofile, protocol=pickle.HIGHEST_PROTOCOL)
 
 #    /|
 #   / +============================|

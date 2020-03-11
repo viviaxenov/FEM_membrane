@@ -17,10 +17,10 @@
     },
    "Run" :
     {
-        "vtk_dir" : "../res/wt_long/",
-        "n_iter" : 600,
-        "ipf" : 3,
-        "Load": "[where(logical_and(logical_and(x < -0.0035, t <= 1e-5), abs(y - 1.225e-2) < 1.4e-2), 1e9*sin(90460.0*2*3.1416*t), 0.0), 0.0, 0.0]",
+        "vtk_dir" : "../res/wt_long_exp/",
+        "n_iter" : 1000,
+        "ipf" : 5,
+        "Load": "[where(logical_and(logical_and(x < -2e-3, t <= 1/90460.0), abs(y - 3.5e-3*7) < 3.5e-3*8), 1e9*sin(90460.0*2*3.1416*t), 0.0), 0.0, 0.0]",
         "courant" : 5,
         "solver" : "factorized"
     }
