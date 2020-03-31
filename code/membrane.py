@@ -77,6 +77,7 @@ class Grid:
         self.x_0 = np.zeros([n_nodes])
         self.y_0 = np.zeros([n_nodes])  # initial positions
         self.elements = []  # list of elements, will be filled later
+        self.D = [] # elastic moduli tensor
         self.K = sp.dok_matrix(
             (3 * n_nodes, 3 * n_nodes), dtype=np.float64)  # global stiffness matrix
         self.C = 0.  # damping matrix
@@ -200,15 +201,33 @@ class Grid:
             B = self.get_element_B(elem)
             elem.DB = D @ B
 
-    def assemble_K(self):  # K = 0.5Sh*B.T @(DB) see eq 1.4.1
+    def assemble_K(self, D=None):  # K = 0.5Sh*B.T @(DB) see eq 1.4.1
         """"Calculates global stiffness matrix for entire grid; used in both static and dynamic problems"""
+        if D is None:
+            for elem in self.elements:
+                K_e = self.get_element_B(elem).T @ elem.DB
+                K_e *= 0.5 * elem.S * elem.h  # local stiffness obtained
+                for i in range(3):
+                    for j in range(3):
+                        I, J = elem.node_ind[i], elem.node_ind[j]
+                        self.K[3 * I:3 * (I + 1), 3 * J:3 * (J + 1)] += K_e[3 * i:3 * (i + 1), 3 * j:3 * (j + 1)]
+            return
+        assert isinstance(D, np.ndarray)
+        assert D.shape == (6,6)
+        self.D = D.copy()
+        self.K = sp.dok_matrix(self.K.shape)
         for elem in self.elements:
-            K_e = self.get_element_B(elem).T @ elem.DB
+            elem.D = self.D
+            B_e = self.get_element_B(elem)
+            K_e = B_e.T@D@B_e
             K_e *= 0.5 * elem.S * elem.h  # local stiffness obtained
             for i in range(3):
                 for j in range(3):
                     I, J = elem.node_ind[i], elem.node_ind[j]
                     self.K[3 * I:3 * (I + 1), 3 * J:3 * (J + 1)] += K_e[3 * i:3 * (i + 1), 3 * j:3 * (j + 1)]
+            self.set_DBmatrix()
+        return 
+
 
     def assemble_f(self):
         """"Calculates nodal force vector from elements' distributed force vectors"""
@@ -470,6 +489,7 @@ def generate_perforated_grid(X: np.float64, Y: np.float64, n_x: int, n_y: int,
         D = get_isotropic_elastic_tensor(E, nu)
 
     res = Grid((n_x + 1) * (n_y + 1))
+    res.D = D.copy()
 
     def index(i, j):
         return (n_x + 1) * i + j
@@ -535,6 +555,7 @@ def generate_from_points_and_triangles(points, triangles,
 
     n_vertex = points.shape[0]
     res = Grid(n_vertex)
+    res.D = D.copy()
 
     res.x_0 += points[:, 0]
     res.y_0 += points[:, 1]

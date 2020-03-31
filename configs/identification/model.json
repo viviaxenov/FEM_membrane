@@ -1,0 +1,22 @@
+{
+    "Grid":
+    {
+        "pickle_file" : "../pickles/model",
+        "rho" : 900.0,
+        "h" : 1e-3,
+        "Geometric" :
+        {
+            "type" : "from_mesh",
+            "mesh_file" : "../configs/mesh.inp"
+        },
+        "Elastic" :
+        {
+            "E" : 1.1e11,
+            "nu" : 0.45
+        },  
+        "Constraints" :
+        {
+            "Displacement" : ["constraint"]
+        }
+    }
+}
