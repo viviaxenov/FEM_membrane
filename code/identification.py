@@ -65,13 +65,12 @@ class IdentificationProblem:
     def __init__(self, model: mb.Grid, gamma=1.4, D_ref=None):
         self.D = model.D.copy() # interpret it as an initial guess
         self.Dv = IdentificationProblem.Dmatrix_to_vector(self.D)
-        self.K_old = model.K.copy()
         self.Ke_basis = IdentificationProblem.get_Ke_basis(model)
         self.K = IdentificationProblem.get_K(self.Ke_basis, self.Dv)
 
         self.M = model.M
         self.gamma = gamma
-        self.f = model.f
+        self.f = model.f.copy()
         self.D_ref = D_ref
         self.afc_residual = np.inf
         self.D_residual = np.inf
@@ -85,15 +84,15 @@ class IdentificationProblem:
         self.u = None
 
     def add_reference(self, omegas: np.array, afc_ref: np.array):
-        self.omegas = omegas
+        self.omegas = omegas.copy()
         assert afc_ref.shape == (omegas.shape[0], self.f.shape[0])
-        self.u_ref = afc_ref
+        self.u_ref = afc_ref.copy()
         self.u = np.zeros_like(afc_ref)
 
     def eval_u(self):
         self.u.fill(0)
         for idx, w in enumerate(self.omegas):
-            K_eff = self.K + 1j*gamma*w*self.M - w**2*self.M
+            K_eff = self.K + 1j*self.gamma*w*self.M - w**2*self.M
             u, status = self.default_linear_solver(K_eff, self.f)
             self.u[idx, :] = u
 
@@ -111,7 +110,8 @@ class IdentificationProblem:
             u = self.u[idx, :] 
             for j in range(21):
                 partial, status = self.default_linear_solver(K_eff, -self.Ke_basis[j]@u)
-                self.grad[j] += np.vdot(u - self.u_ref[idx, :], partial)
+                vp = np.vdot(u - self.u_ref[idx, :], partial).real
+                self.grad[j] += vp
 
     def gradient_descent_step(self, grad_step=.1):
         self.eval_gradient()
@@ -143,8 +143,6 @@ if __name__ == '__main__':
     from parse_inp import parse_inp_file
     pickle_path = '../pickles/id'
 
-    reference = run_command("grid ../configs/identification/ref.json")
-    gamma = 1.6
 
     def get_afc(K, M, f, gamma, omegas):
         n_freqs = omegas.shape[0]
@@ -157,20 +155,21 @@ if __name__ == '__main__':
             us[i, :] = u0
         return us
 
+
+    def adhoc_assemble_f(grid: mb.Grid):
+        grid.f.fill(0.0)
+        for ind in grid.element_groups['load']:
+            elem = grid.elements[ind]
+            f_elem = elem.S * elem.h * 1e8 * np.array([0.,0.,1.]) / 6.0
+            for i in range(3):
+                I = elem.node_ind[i]
+                grid.f[3*I:3*(I + 1)] -= f_elem
+        return
+
     if '-r' in sys.argv[1:] or not os.path.exists(pickle_path):
-        def adhoc_assemble_f(grid: mb.Grid):
-            grid.f.fill(0.0)
-            for ind in grid.element_groups['load']:
-                elem = grid.elements[ind]
-                f_elem = elem.S * elem.h * 1e8 * np.array([0.,0.,1.]) / 6.0
-                for i in range(3):
-                    I = elem.node_ind[i]
-                    grid.f[3*I:3*(I + 1)] -= f_elem
-            return
 
         model = run_command("grid ../configs/identification/model.json")
-        for grid in [model, reference]:
-            adhoc_assemble_f(grid)
+        adhoc_assemble_f(model)
         identification = IdentificationProblem(model, gamma=gamma, D_ref=reference.D)
 
         with open(pickle_path, 'wb') as ofile:
@@ -179,17 +178,22 @@ if __name__ == '__main__':
         with open(pickle_path, 'rb') as ifile:
             identification = pickle.load(ifile)
     
-    omegas = np.linspace(50, 240, 101, endpoint=True)
-    omegas *= 2*np.pi
-    identification.omegas = omegas
-    afc_ref = get_afc(reference.K, reference.M, reference.f, gamma, omegas) 
-    identification.add_reference(omegas, afc_ref)
-#    identification.eval_u()
-    identification.optimize_gd(max_steps=200, verbose=True, grad_step=1000)
+    reference = run_command("grid ../configs/identification/ref.json")
+    adhoc_assemble_f(reference)
+    gamma = 1.6
 
+    omegas = np.linspace(110, 120, 51, endpoint=True)
+    omegas *= 2*np.pi
+    afc_ref = get_afc(reference.K, reference.M, reference.f, gamma, omegas) 
     n = 83 # test node
-    plt.plot(omegas/2/np.pi, np.absolute(afc_ref[:, 3*n + 2]), label='Reference')
-    plt.plot(omegas/2/np.pi, np.absolute(identification.u[:, 3*n + 2]), label='Optimized')
+    identification.add_reference(omegas, afc_ref)
+    identification.eval_u()
+    afc_old = identification.u[:, 3*n + 2].copy()
+    identification.optimize_gd(max_steps=1000, verbose=True, grad_step=1e12)
+
+    plt.plot(omegas/2/np.pi, np.absolute(afc_ref[:, 3*n + 2]), label='Reference', marker='s')
+    plt.plot(omegas/2/np.pi, np.absolute(afc_old), label='Initial guess', marker='o')
+    plt.plot(omegas/2/np.pi, np.absolute(identification.u[:, 3*n + 2]), label='Optimized', marker='o')
     #label=f"({grid.x_0[n]:.1f}, {grid.y_0[n]:.1f})"
     #    plt.plot(omegas/2/np.pi, us[:, 3*n + 2].imag, label=f"Im(f)")
     plt.grid()
