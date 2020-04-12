@@ -166,6 +166,10 @@ if __name__ == '__main__':
                 grid.f[3*I:3*(I + 1)] -= f_elem
         return
 
+    reference = run_command("grid ../configs/identification/ref.json")
+    adhoc_assemble_f(reference)
+    gamma = 1.6
+
     if '-r' in sys.argv[1:] or not os.path.exists(pickle_path):
 
         model = run_command("grid ../configs/identification/model.json")
@@ -178,10 +182,6 @@ if __name__ == '__main__':
         with open(pickle_path, 'rb') as ifile:
             identification = pickle.load(ifile)
     
-    reference = run_command("grid ../configs/identification/ref.json")
-    adhoc_assemble_f(reference)
-    gamma = 1.6
-
     omegas = np.linspace(110, 120, 51, endpoint=True)
     omegas *= 2*np.pi
     afc_ref = get_afc(reference.K, reference.M, reference.f, gamma, omegas) 
