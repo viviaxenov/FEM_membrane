@@ -118,7 +118,7 @@ if __name__ == '__main__':
             fig.savefig(os.path.join(output_path_prefix, f"cp_{n:d}.pdf"), fmt='pdf')
 
     ds = pd.DataFrame(res_dict, index=omegas)
-    ds.columns = pd.MultiIndex.from_tuples(ds.columns, names=["omega", "cp"])
+    ds.columns = pd.MultiIndex.from_tuples(ds.columns, names=["gamma", "cp"])
     ds.to_hdf(os.path.join(common_path_prefix, "data.h5"), "w")
     ds.to_pickle(os.path.join(common_path_prefix, "data.pkl"))
     print(ds)

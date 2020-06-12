@@ -1,13 +1,13 @@
 {
     "Grid":
     {
-        "pickle_file" : "../pickles/gt",
+        "pickle_file" : "../pickles/no_perf_smaller_rho",
         "rho" : 706.7770438746228,
         "h" : 1e-3,
         "Geometric" :
         {
             "type" : "from_mesh",
-            "mesh_file" : "../configs/mesh.inp"
+            "mesh_file" : "../configs/no_perf.inp"
         },
         "Elastic" :
         {
