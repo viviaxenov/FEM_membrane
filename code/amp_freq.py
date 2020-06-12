@@ -3,8 +3,6 @@ import scipy.sparse as sp
 import scipy.sparse.linalg
 import matplotlib.pyplot as plt
 
-import numba as nb
-
 import membrane as mb
 from config_loader import run_command
 import os
@@ -45,18 +43,6 @@ def get_afc_dumb(K, M, f, gamma, omegas):
         us[i, :] = u0
     return us
 
-@nb.njit('c16[:,:](f8[:,:],f8[:,:],f8[:],f8,f8[:])', parallel=True, cache=True)
-def get_afc(K, M, f, gamma, omegas):
-    n_freqs = omegas.shape[0]
-    us = np.zeros((n_freqs, f.shape[0]), dtype=np.complex128)
-    C = gamma*M
-    f = f.astype(np.complex128)
-    for i in nb.prange(n_freqs):
-        w = omegas[i]
-        K_eff = K + 1j*w*C - w**2*M
-        u0 = np.linalg.solve(K_eff, f)
-        us[i, :] = u0
-    return us
 
 if __name__ == '__main__':
 
@@ -80,16 +66,10 @@ if __name__ == '__main__':
     K = K.todense()
     M = M.todense()
 
-    nb.config.NUMBA_NUM_THREADS = 4
-    start = time.perf_counter()
-    us1 = get_afc(K, M, f, gamma, omegas)
-    print(f"Optimized: {(time.perf_counter() - start):f}")
-
     start = time.perf_counter()
     us = get_afc_dumb(K, M, f, gamma, omegas)
-    print(f"No optimization: {(time.perf_counter() - start):f}")
-
-    assert np.allclose(us, us1, rtol=1e-9, atol=1e-16)
+    t_elapsed = time.perf_counter() - start
+    print(f"Elapsed time: {t_elapsed:f}")
 
     test_nodes = [83, 84, 80, 81]
     for n in test_nodes:

@@ -2,7 +2,7 @@
     "Grid":
     {
         "pickle_file" : "../pickles/gt",
-        "rho" : 900.0,
+        "rho" : 706.7770438746228,
         "h" : 1e-3,
         "Geometric" :
         {
@@ -19,14 +19,12 @@
             "Displacement" : ["hole"]
         }
     },
-   "Run" :
+
+    "AFC":
     {
-        "vtk_dir" : "../res/group_test/",
-        "n_iter" : 600,
-        "ipf" : 20,
-        "Load": "[0., 5e8, 5e8]",
-        "courant" : 0.5,
-        "solver" : "factorized"
+        "gammas": [0.1, 10.0],
+        "freqs_Hz": [1, 2000, 500],
+        "cp_idx": [1177]
     }
 }
 

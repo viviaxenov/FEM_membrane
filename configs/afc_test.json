@@ -19,14 +19,12 @@
             "Displacement" : ["hole"]
         }
     },
-   "Run" :
+
+    "AFC":
     {
-        "vtk_dir" : "../res/group_test/",
-        "n_iter" : 600,
-        "ipf" : 20,
-        "Load": "[0., 5e8, 5e8]",
-        "courant" : 0.5,
-        "solver" : "factorized"
+        "gammas": [0.01, 0.1, 1.0, 100.0, 1000.0],
+        "freqs_Hz": [1, 2000, 500],
+        "cp_idx": [83, 81]
     }
 }
 
