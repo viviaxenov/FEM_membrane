@@ -11,6 +11,8 @@ import time
 import json
 import pandas as pd
 
+
+
 def assemble_matrices(json_task_path):
 
     grid = run_command("grid " + json_task_path)
@@ -122,4 +124,4 @@ if __name__ == '__main__':
     ds.to_hdf(os.path.join(common_path_prefix, "data.h5"), "w")
     ds.to_pickle(os.path.join(common_path_prefix, "data.pkl"))
     print(ds)
-    print("Done")
+    print("Done!")
